@@ -10,14 +10,67 @@ import {
 } from './musicTheory.js';
 
 const DEFAULTS = {
-  bpm: 124,
-  bars: 8,
+  bpm: 132,
+  bars: 16,
   key: 'A',
   scale: 'minor',
-  mood: 'ambient',
-  density: 0.62,
-  swing: 0.08,
-  seed: 'aphex-twin-music-lab',
+  mood: 'restless',
+  preset: 'fractured',
+  density: 0.66,
+  swing: 0.06,
+  syncopation: 0.68,
+  mutation: 0.62,
+  instability: 0.44,
+  brightness: 0.48,
+  texture: 0.58,
+  seed: 'atmg-experimental-idm',
+};
+
+const PRESET_PROFILES = {
+  fractured: {
+    mood: 'restless',
+    scale: 'minor',
+    density: 0.72,
+    syncopation: 0.82,
+    mutation: 0.7,
+    instability: 0.56,
+    brightness: 0.42,
+    texture: 0.62,
+    swing: 0.05,
+  },
+  lucid: {
+    mood: 'euphoric',
+    scale: 'dorian',
+    density: 0.58,
+    syncopation: 0.48,
+    mutation: 0.45,
+    instability: 0.26,
+    brightness: 0.66,
+    texture: 0.72,
+    swing: 0.04,
+  },
+  corrosive: {
+    mood: 'dark',
+    scale: 'phrygian',
+    density: 0.78,
+    syncopation: 0.74,
+    mutation: 0.82,
+    instability: 0.7,
+    brightness: 0.24,
+    texture: 0.44,
+    swing: 0.07,
+  },
+  hypnotic: {
+    mood: 'ambient',
+    scale: 'mixolydian',
+    density: 0.52,
+    syncopation: 0.36,
+    mutation: 0.34,
+    instability: 0.18,
+    brightness: 0.58,
+    texture: 0.84,
+    swing: 0.03,
+  },
 };
 
 const DRUM_MAP = {
@@ -25,7 +78,7 @@ const DRUM_MAP = {
   snare: 38,
   hat: 42,
   openHat: 46,
-  clap: 39,
+  perc: 45,
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -47,6 +100,7 @@ const seedToInt = (seed) => {
 };
 
 const choose = (random, items) => items[Math.floor(random() * items.length) % items.length];
+const maybe = (random, probability) => random() < probability;
 
 const makeNote = ({ lane, midi, beat, duration, velocity }) => ({
   lane,
@@ -56,7 +110,7 @@ const makeNote = ({ lane, midi, beat, duration, velocity }) => ({
   velocity: clamp(Math.round(velocity), 1, 127),
 });
 
-const rotate = (pattern, offset) => pattern.map((_, index) => pattern[(index + offset) % pattern.length]);
+const rotate = (pattern, offset) => pattern.map((_, index) => pattern[(index + offset + pattern.length) % pattern.length]);
 
 export const euclidean = (pulses, steps) => {
   if (steps <= 0) {
@@ -71,192 +125,336 @@ export const euclidean = (pulses, steps) => {
 };
 
 const grooveOffset = (stepIndex, swingAmount) => (stepIndex % 2 === 1 ? swingAmount : 0);
+const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
 
-const addDrumLane = ({ events, lane, midi, pattern, barIndex, velocityBase, swing }) => {
-  pattern.forEach((hit, stepIndex) => {
-    if (!hit) {
-      return;
-    }
+const mergeSettings = (input) => {
+  const overrides = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+  const presetProfile = PRESET_PROFILES[overrides.preset] ?? PRESET_PROFILES[DEFAULTS.preset];
+  return {
+    ...DEFAULTS,
+    ...presetProfile,
+    ...overrides,
+    bars: clamp(Number(overrides.bars ?? presetProfile.bars ?? DEFAULTS.bars), 2, 64),
+    bpm: clamp(Number(overrides.bpm ?? presetProfile.bpm ?? DEFAULTS.bpm), 70, 180),
+    density: clamp(Number(overrides.density ?? presetProfile.density ?? DEFAULTS.density), 0.2, 0.95),
+    swing: clamp(Number(overrides.swing ?? presetProfile.swing ?? DEFAULTS.swing), 0, 0.2),
+    syncopation: clamp(Number(overrides.syncopation ?? presetProfile.syncopation ?? DEFAULTS.syncopation), 0, 1),
+    mutation: clamp(Number(overrides.mutation ?? presetProfile.mutation ?? DEFAULTS.mutation), 0, 1),
+    instability: clamp(Number(overrides.instability ?? presetProfile.instability ?? DEFAULTS.instability), 0, 1),
+    brightness: clamp(Number(overrides.brightness ?? presetProfile.brightness ?? DEFAULTS.brightness), 0, 1),
+    texture: clamp(Number(overrides.texture ?? presetProfile.texture ?? DEFAULTS.texture), 0, 1),
+  };
+};
 
-    const beat = barIndex * 4 + stepIndex * 0.25 + grooveOffset(stepIndex, swing);
-    events.push(
-      makeNote({
-        lane,
-        midi,
-        beat,
-        duration: lane === 'hat' ? 0.11 : 0.18,
-        velocity: velocityBase - (stepIndex % 4 === 0 ? 0 : 7),
-      }),
-    );
+const buildSections = (bars, settings) => {
+  if (bars <= 4) {
+    return [{ name: 'loop', startBar: 0, endBar: bars, energy: settings.density, mutation: settings.mutation, texture: settings.texture }];
+  }
+
+  const structure = bars >= 16
+    ? [
+      ['seed', 0.2, 0.35, 0.55],
+      ['lift', 0.48, 0.58, 0.66],
+      ['fracture', 0.78, 0.82, 0.5],
+      ['release', 0.38, 0.44, 0.82],
+    ]
+    : [
+      ['seed', 0.28, 0.42, 0.58],
+      ['fracture', 0.74, 0.8, 0.48],
+      ['release', 0.42, 0.46, 0.8],
+    ];
+
+  const lengths = Array.from({ length: structure.length }, () => Math.floor(bars / structure.length));
+  lengths[lengths.length - 1] += bars - lengths.reduce((sum, value) => sum + value, 0);
+
+  let cursor = 0;
+  return structure.map(([name, energy, mutation, texture], index) => {
+    const startBar = cursor;
+    const endBar = cursor + lengths[index];
+    cursor = endBar;
+    return {
+      name,
+      startBar,
+      endBar,
+      energy: clamp((energy + settings.density) / 2, 0.2, 0.98),
+      mutation: clamp((mutation + settings.mutation) / 2, 0, 1),
+      texture: clamp((texture + settings.texture) / 2, 0, 1),
+    };
   });
 };
 
-const createChordTrack = ({ progression, bars, key, scale, random }) => {
+const sectionStateForBar = (barIndex, sections, settings) => {
+  const section = sections.find((entry) => barIndex >= entry.startBar && barIndex < entry.endBar) ?? sections.at(-1);
+  const localSpan = Math.max(1, section.endBar - section.startBar);
+  const localProgress = (barIndex - section.startBar) / localSpan;
+
+  return {
+    ...section,
+    localProgress,
+    density: clamp(settings.density * (0.74 + section.energy * 0.5), 0.2, 0.98),
+    syncopation: clamp(settings.syncopation * (0.7 + section.mutation * 0.45), 0, 1),
+    instability: clamp(settings.instability * (0.72 + section.mutation * 0.55), 0, 1),
+    brightness: clamp(settings.brightness * (0.66 + section.texture * 0.55), 0, 1),
+  };
+};
+
+const createMotif = (random, settings) => {
+  const length = choose(random, [4, 5, 6]);
+  const pool = settings.brightness > 0.55 ? [1, 2, 3, 5, 6, 8] : [1, 3, 4, 5, 6, 7];
+  return Array.from({ length }, () => choose(random, pool));
+};
+
+const mutateMotif = (motif, random, intensity) => {
+  const amount = Math.max(1, Math.round(intensity * 3));
+  const next = [...motif];
+
+  for (let index = 0; index < amount; index += 1) {
+    const mutationIndex = Math.floor(random() * next.length);
+    const delta = choose(random, [-3, -2, -1, 1, 2, 3]);
+    next[mutationIndex] = clamp(next[mutationIndex] + delta, 1, 10);
+  }
+
+  if (intensity > 0.65 && maybe(random, 0.45)) {
+    return rotate(next, Math.floor(random() * next.length));
+  }
+
+  return next;
+};
+
+const createHarmonyTrack = ({ progression, bars, key, scale, sections, settings, random }) => {
   const events = [];
   let previousChord = null;
+  let finalChord = null;
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
+    const state = sectionStateForBar(barIndex, sections, settings);
     const degree = progression[barIndex % progression.length];
-    const rawChord = buildChord({ key, scale, degree, octave: 4, width: 4 });
+    const width = state.texture > 0.72 ? 5 : 4;
+    const rawChord = buildChord({ key, scale, degree, octave: settings.brightness > 0.55 ? 4 : 3, width });
     const chord = invertChordNear(rawChord, previousChord);
     previousChord = chord;
+    finalChord = chord;
+    const barStart = barIndex * 4;
 
-    chord.forEach((midi, voiceIndex) => {
-      events.push(
-        makeNote({
-          lane: 'chords',
-          midi,
-          beat: barIndex * 4 + voiceIndex * 0.02,
-          duration: 3.75,
-          velocity: 64 + Math.round(random() * 12),
-        }),
-      );
+    if (state.energy < 0.45 && maybe(random, 0.55)) {
+      chord.forEach((midi, voiceIndex) => {
+        events.push(makeNote({ lane: 'chords', midi, beat: barStart + voiceIndex * 0.03, duration: 3.7, velocity: 56 + state.energy * 36 }));
+      });
+      continue;
+    }
+
+    const stabBeats = state.energy > 0.7 ? [0, 1.5, 2.75] : [0, 2];
+    stabBeats.forEach((offset, hitIndex) => {
+      chord.forEach((midi, voiceIndex) => {
+        const velocity = 52 + state.energy * 42 + (voiceIndex === 0 ? 6 : 0) + hitIndex * 2;
+        const duration = hitIndex === 0 ? 1.1 : 0.65 + state.texture * 0.35;
+        events.push(makeNote({ lane: 'chords', midi, beat: barStart + offset + voiceIndex * 0.02, duration, velocity }));
+      });
     });
   }
 
-  return { events, finalChord: previousChord };
+  return { events, finalChord };
 };
 
-const createBassTrack = ({ progression, bars, key, scale, density, random }) => {
+const createBassTrack = ({ progression, bars, key, scale, sections, settings, random }) => {
   const events = [];
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
+    const state = sectionStateForBar(barIndex, sections, settings);
     const degree = progression[barIndex % progression.length];
     const root = degreeToMidi({ key, scale, degree, octave: 2 });
     const fifth = degreeToMidi({ key, scale, degree: degree + 4, octave: 2 });
-    const pickup = quantizeToScale({ midi: root + choose(random, [2, 3, 5, 7]), key, scale, min: 28, max: 60 });
+    const colorTone = quantizeToScale({ midi: root + choose(random, [2, 3, 5, 7, 9]), key, scale, min: 28, max: 60 });
     const barStart = barIndex * 4;
+    const pattern = state.syncopation > 0.62 ? [0, 1.5, 2.75, 3.5] : [0, 2, 3.5];
 
-    events.push(makeNote({ lane: 'bass', midi: root, beat: barStart, duration: 0.9, velocity: 104 }));
-    events.push(makeNote({ lane: 'bass', midi: fifth, beat: barStart + 1.5, duration: 0.6, velocity: 88 }));
-
-    if (density > 0.45) {
-      events.push(makeNote({ lane: 'bass', midi: root, beat: barStart + 2.5, duration: 0.45, velocity: 92 }));
-    }
-
-    if (density > 0.58) {
-      events.push(makeNote({ lane: 'bass', midi: pickup, beat: barStart + 3.5, duration: 0.35, velocity: 84 }));
-    }
+    pattern.forEach((offset, stepIndex) => {
+      const source = [root, fifth, root, colorTone][stepIndex % 4];
+      const instabilityShift = maybe(random, state.instability * 0.22) ? choose(random, [-2, 2]) : 0;
+      const midi = quantizeToScale({ midi: source + instabilityShift, key, scale, min: 28, max: 60 });
+      events.push(makeNote({
+        lane: 'bass',
+        midi,
+        beat: barStart + offset + (stepIndex === 1 ? settings.swing * 0.4 : 0),
+        duration: stepIndex === 0 ? 0.95 : 0.3 + state.energy * 0.45,
+        velocity: 86 + state.energy * 28,
+      }));
+    });
   }
 
   return events;
 };
 
-const mutateMotif = (motif, random) => {
-  const variants = [
-    motif,
-    [...motif].reverse(),
-    motif.map((step, index) => step + (index % 2 === 0 ? 2 : -1)),
-    motif.map((step, index) => step + (index === 2 ? 3 : 0)),
-  ];
-
-  return choose(random, variants);
-};
-
-const createMelodyTrack = ({ progression, bars, key, scale, density, swing, random }) => {
+const createMelodyTrack = ({ progression, bars, key, scale, sections, settings, random }) => {
   const events = [];
-  let motif = [1, 3, 5, 6];
+  const seedMotif = createMotif(random, settings);
+  let motif = seedMotif;
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
+    const state = sectionStateForBar(barIndex, sections, settings);
     const degree = progression[barIndex % progression.length];
     const barStart = barIndex * 4;
-    if (barIndex % 2 === 0) {
-      motif = mutateMotif(motif, random);
+
+    if (barIndex === sections.at(-1)?.startBar) {
+      motif = maybe(random, 0.65) ? [...seedMotif] : mutateMotif(seedMotif, random, state.mutation);
+    } else if (barIndex > 0 && (barIndex % 2 === 0 || maybe(random, state.mutation * 0.45))) {
+      motif = mutateMotif(motif, random, state.mutation);
     }
 
     motif.forEach((interval, index) => {
-      if (random() > density + 0.12) {
+      const restChance = clamp(0.44 - state.density * 0.22 + state.mutation * 0.08, 0.08, 0.5);
+      if (maybe(random, restChance)) {
         return;
       }
 
-      const beat = barStart + index * 0.75 + grooveOffset(index, swing * 0.6);
+      const rhythmicGrid = state.syncopation > 0.7 ? [0, 0.5, 1.25, 2.25, 3.125] : [0, 0.75, 1.5, 2.5, 3.25];
+      const offset = rhythmicGrid[index % rhythmicGrid.length] + grooveOffset(index, settings.swing * 0.75);
+      const registerBase = settings.brightness > 0.56 ? 5 : 4;
+      const contourShift = maybe(random, state.instability * 0.35) ? choose(random, [-3, -2, 2, 3]) : 0;
       const midi = quantizeToScale({
-        midi: degreeToMidi({ key, scale, degree: degree + interval, octave: 5 }) + choose(random, [-2, 0, 0, 2]),
+        midi: degreeToMidi({ key, scale, degree: degree + interval, octave: registerBase }) + contourShift,
         key,
         scale,
-        min: 60,
-        max: 88,
+        min: 52,
+        max: 92,
       });
 
-      events.push(
-        makeNote({
-          lane: 'melody',
-          midi,
-          beat,
-          duration: choose(random, [0.23, 0.35, 0.5, 0.75]),
-          velocity: 76 + Math.round(random() * 28),
-        }),
-      );
+      events.push(makeNote({
+        lane: 'melody',
+        midi,
+        beat: barStart + offset,
+        duration: choose(random, [0.18, 0.25, 0.33, 0.5, 0.75]),
+        velocity: 70 + state.energy * 22 + state.brightness * 14,
+      }));
     });
   }
 
-  return events.sort((left, right) => left.beat - right.beat);
+  return { events: events.sort((left, right) => left.beat - right.beat), seedMotif };
 };
 
-const createDrumTrack = ({ bars, density, swing }) => {
+const createTextureTrack = ({ progression, bars, key, scale, sections, settings, random }) => {
   const events = [];
-  const kick = euclidean(Math.round(4 + density * 4), 16);
-  const snare = rotate(euclidean(2, 16), 4);
-  const hat = euclidean(Math.round(8 + density * 4), 16);
-  const openHat = rotate(euclidean(density > 0.7 ? 3 : 2, 16), 2);
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
-    addDrumLane({ events, lane: 'kick', midi: DRUM_MAP.kick, pattern: kick, barIndex, velocityBase: 120, swing });
-    addDrumLane({ events, lane: 'snare', midi: DRUM_MAP.snare, pattern: snare, barIndex, velocityBase: 110, swing });
-    addDrumLane({ events, lane: 'hat', midi: DRUM_MAP.hat, pattern: hat, barIndex, velocityBase: 88, swing });
-    addDrumLane({ events, lane: 'openHat', midi: DRUM_MAP.openHat, pattern: openHat, barIndex, velocityBase: 82, swing });
+    const state = sectionStateForBar(barIndex, sections, settings);
+    const degree = progression[barIndex % progression.length];
+    const barStart = barIndex * 4;
+    const repetitions = Math.max(1, Math.round(state.texture * 3));
+
+    for (let index = 0; index < repetitions; index += 1) {
+      if (maybe(random, clamp(0.48 - state.texture * 0.18, 0.08, 0.5))) {
+        continue;
+      }
+
+      const midi = quantizeToScale({
+        midi: degreeToMidi({ key, scale, degree: degree + choose(random, [1, 3, 5, 7, 9]), octave: 5 + (state.brightness > 0.6 ? 1 : 0) }),
+        key,
+        scale,
+        min: 64,
+        max: 100,
+      });
+
+      const beat = barStart + index * (4 / (repetitions + 0.35)) + choose(random, [0, 0.125, 0.25]);
+      events.push(makeNote({
+        lane: 'texture',
+        midi,
+        beat,
+        duration: 0.2 + state.texture * 0.9,
+        velocity: 42 + state.texture * 34,
+      }));
+    }
   }
 
   return events.sort((left, right) => left.beat - right.beat);
 };
 
-const buildSections = (bars) => {
-  if (bars <= 4) {
-    return [{ name: 'loop', startBar: 0, endBar: bars }];
-  }
+const addDrumLane = ({ events, lane, midi, pattern, barIndex, velocityBase, swing, density, random, instability }) => {
+  pattern.forEach((hit, stepIndex) => {
+    if (!hit) {
+      return;
+    }
 
-  const splitA = Math.max(2, Math.floor(bars * 0.25));
-  const splitB = Math.max(splitA + 2, Math.floor(bars * 0.75));
+    const stutter = lane === 'perc' && maybe(random, instability * 0.35);
+    const beat = barIndex * 4 + stepIndex * 0.25 + grooveOffset(stepIndex, swing);
+    events.push(makeNote({ lane, midi, beat, duration: lane === 'hat' ? 0.08 : 0.16, velocity: velocityBase - (stepIndex % 4 === 0 ? 0 : 8) + density * 8 }));
 
-  return [
-    { name: 'intro', startBar: 0, endBar: splitA },
-    { name: 'core', startBar: splitA, endBar: splitB },
-    { name: 'outro', startBar: splitB, endBar: bars },
-  ];
+    if (stutter) {
+      events.push(makeNote({ lane, midi, beat: beat + 0.125, duration: 0.08, velocity: velocityBase - 20 }));
+    }
+  });
 };
 
-export const generateProject = (input = {}) => {
-  const overrides = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
-  const settings = {
-    ...DEFAULTS,
-    ...overrides,
-    bars: clamp(Number(overrides.bars ?? DEFAULTS.bars), 2, 64),
-    bpm: clamp(Number(overrides.bpm ?? DEFAULTS.bpm), 70, 180),
-    density: clamp(Number(overrides.density ?? DEFAULTS.density), 0.2, 0.95),
-    swing: clamp(Number(overrides.swing ?? DEFAULTS.swing), 0, 0.2),
-  };
+const createDrumTrack = ({ bars, sections, settings, random }) => {
+  const events = [];
 
+  for (let barIndex = 0; barIndex < bars; barIndex += 1) {
+    const state = sectionStateForBar(barIndex, sections, settings);
+    const kick = rotate(euclidean(Math.round(3 + state.density * 6), 16), maybe(random, state.syncopation * 0.55) ? 1 : 0);
+    const snare = rotate(euclidean(2 + (state.energy > 0.72 ? 1 : 0), 16), 4);
+    const hat = rotate(euclidean(Math.round(6 + state.density * 8), 16), Math.round(state.syncopation * 2));
+    const perc = rotate(euclidean(Math.round(2 + state.syncopation * 5), 12).flatMap((step) => [step, 0]).slice(0, 16), 1);
+    const openHat = rotate(euclidean(state.energy > 0.7 ? 3 : 2, 16), 2);
+
+    addDrumLane({ events, lane: 'kick', midi: DRUM_MAP.kick, pattern: kick, barIndex, velocityBase: 118, swing: settings.swing * 0.35, density: state.density, random, instability: state.instability });
+    addDrumLane({ events, lane: 'snare', midi: DRUM_MAP.snare, pattern: snare, barIndex, velocityBase: 108, swing: settings.swing, density: state.density, random, instability: state.instability });
+    addDrumLane({ events, lane: 'hat', midi: DRUM_MAP.hat, pattern: hat, barIndex, velocityBase: 84, swing: settings.swing * 0.9, density: state.density, random, instability: state.instability });
+    addDrumLane({ events, lane: 'openHat', midi: DRUM_MAP.openHat, pattern: openHat, barIndex, velocityBase: 76, swing: settings.swing, density: state.density, random, instability: state.instability });
+    addDrumLane({ events, lane: 'perc', midi: DRUM_MAP.perc, pattern: perc, barIndex, velocityBase: 72, swing: settings.swing * 0.5, density: state.density, random, instability: state.instability });
+
+    if (state.mutation > 0.66 && maybe(random, 0.42)) {
+      const fillStart = barIndex * 4 + 3;
+      [0, 0.25, 0.5, 0.75].forEach((offset, index) => {
+        events.push(makeNote({
+          lane: 'glitch',
+          midi: choose(random, [39, 45, 46]),
+          beat: fillStart + offset,
+          duration: 0.08,
+          velocity: 70 + index * 8,
+        }));
+      });
+    }
+  }
+
+  return events.sort((left, right) => left.beat - right.beat);
+};
+
+const summarizeTrack = (events) => ({
+  count: events.length,
+  averageVelocity: Number(average(events.map((note) => note.velocity)).toFixed(2)),
+  spanBeats: events.length ? Number((events.at(-1).beat + events.at(-1).duration - events[0].beat).toFixed(3)) : 0,
+});
+
+export const generateProject = (input = {}) => {
+  const settings = mergeSettings(input);
   const random = mulberry32(seedToInt(settings.seed));
+  const sections = buildSections(settings.bars, settings);
   const progression = getProgressionDegrees(settings.mood);
-  const chordTrack = createChordTrack({ ...settings, progression, random });
-  const bassTrack = createBassTrack({ ...settings, progression, random });
-  const melodyTrack = createMelodyTrack({ ...settings, progression, random });
-  const drumTrack = createDrumTrack(settings);
+  const harmonyTrack = createHarmonyTrack({ progression, bars: settings.bars, key: settings.key, scale: settings.scale, sections, settings, random });
+  const bassTrack = createBassTrack({ progression, bars: settings.bars, key: settings.key, scale: settings.scale, sections, settings, random });
+  const melodyTrack = createMelodyTrack({ progression, bars: settings.bars, key: settings.key, scale: settings.scale, sections, settings, random });
+  const textureTrack = createTextureTrack({ progression, bars: settings.bars, key: settings.key, scale: settings.scale, sections, settings, random });
+  const drumTrack = createDrumTrack({ bars: settings.bars, sections, settings, random });
 
   const tracks = {
-    chords: chordTrack.events,
+    chords: harmonyTrack.events,
     bass: bassTrack,
-    melody: melodyTrack,
+    melody: melodyTrack.events,
+    texture: textureTrack,
     drums: drumTrack,
   };
+
+  const trackSummary = Object.fromEntries(Object.entries(tracks).map(([name, events]) => [name, summarizeTrack(events)]));
 
   return {
     meta: {
       ...settings,
+      presetProfile: PRESET_PROFILES[settings.preset],
       progression,
-      sections: buildSections(settings.bars),
+      sections,
+      seedMotif: melodyTrack.seedMotif,
       totalEvents: Object.values(tracks).reduce((sum, track) => sum + track.length, 0),
-      finalChord: noteSummary(chordTrack.finalChord ?? []),
+      finalChord: noteSummary(harmonyTrack.finalChord ?? []),
+      trackSummary,
     },
     tracks,
   };
@@ -266,6 +464,7 @@ export const analyzeClip = ({ notes = [] }) => {
   const sorted = [...notes].sort((left, right) => left.beat - right.beat);
   const durations = sorted.map((note) => note.duration).filter(Boolean);
   const velocities = sorted.map((note) => note.velocity).filter(Boolean);
+  const intervals = sorted.slice(1).map((note, index) => Math.abs(note.midi - sorted[index].midi));
 
   return {
     noteCount: sorted.length,
@@ -273,5 +472,6 @@ export const analyzeClip = ({ notes = [] }) => {
     pitchRange: sorted.length ? { min: sorted[0].midi, max: sorted.reduce((max, note) => Math.max(max, note.midi), sorted[0].midi) } : null,
     averageDuration: durations.length ? Number((durations.reduce((sum, value) => sum + value, 0) / durations.length).toFixed(3)) : 0,
     averageVelocity: velocities.length ? Number((velocities.reduce((sum, value) => sum + value, 0) / velocities.length).toFixed(2)) : 0,
+    averageIntervalLeap: intervals.length ? Number((average(intervals)).toFixed(2)) : 0,
   };
 };

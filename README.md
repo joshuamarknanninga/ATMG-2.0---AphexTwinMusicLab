@@ -1,15 +1,16 @@
 # ATMG 2.0 - AphexTwinMusicLab
 
-ATMG 2.0 is now a **working, self-contained generative music backend** designed to be easy to run, easy to extend, and good enough to power a sequencer, MIDI tool, or browser client.
+ATMG 2.0 is a **working, self-contained generative music backend** designed to be easy to run, easy to extend, and strong enough to power an original experimental electronic sequencer, MIDI tool, or browser client.
 
 ## What changed
 
-The original repository only contained an empty server skeleton. This version replaces that placeholder with a production-friendly, dependency-light Node API focused on:
+The repository now ships with a production-friendly, dependency-light Node API focused on:
 
 - deterministic, seed-based music generation,
-- theory-aware chord, bass, melody, and drum tracks,
-- Euclidean drum programming,
-- voice-led chord inversion,
+- theory-aware chord, bass, melody, texture, and drum tracks,
+- section-aware arrangement with seed / lift / fracture / release forms,
+- controllable syncopation, mutation, instability, brightness, and texture,
+- Euclidean and rotated drum programming,
 - clip analysis for symbolic note data,
 - simple guest sessions and in-memory project persistence.
 
@@ -37,23 +38,35 @@ Creates a lightweight guest session.
 ```
 
 ### `GET /api/music/presets`
-Returns supported moods/scales and the default generator profile.
+Returns supported moods, scales, generator presets, and the default profile.
 
 ### `POST /api/music/generate`
 Generates a complete symbolic project.
 
 ```json
 {
-  "seed": "late-night-broken-beat",
+  "seed": "glass-machine-memory",
+  "preset": "fractured",
   "key": "A",
   "scale": "minor",
-  "mood": "dark",
-  "bars": 8,
-  "bpm": 128,
-  "density": 0.68,
-  "swing": 0.09
+  "bars": 16,
+  "bpm": 134,
+  "density": 0.72,
+  "swing": 0.05,
+  "syncopation": 0.81,
+  "mutation": 0.68,
+  "instability": 0.53,
+  "brightness": 0.44,
+  "texture": 0.63
 }
 ```
+
+### Presets
+
+- `fractured`: dense, syncopated, high-mutation experimental rhythms
+- `lucid`: brighter, melodic, more stable but still intricate
+- `corrosive`: darker, harsher, more unstable movement
+- `hypnotic`: slower-evolving, airy, texture-forward motion
 
 ### `POST /api/projects`
 Requires a Bearer token from `/api/auth/guest`. Saves a generated project.
@@ -72,7 +85,8 @@ Analyzes symbolic note clips.
 
 ## Design notes
 
+- **Original by design:** the generator targets broad experimental electronic / IDM traits rather than imitating any specific artist.
 - **Simple first:** no external database or auth provider is required to start.
 - **Deterministic:** identical seeds produce identical arrangements.
-- **Musical quality:** the generator combines scale quantization, progression presets, voice-leading, motif mutation, and Euclidean spacing to produce tighter results than naïve random note emission.
-- **Extensible:** you can swap the in-memory stores for Mongo/Postgres later without changing the music generation core.
+- **Musical quality:** the engine combines section-aware form, voice-leading, motif memory, controlled mutation, syncopation, and Euclidean spacing to produce more coherent and varied results than naïve random note emission.
+- **Extensible:** you can later swap in real persistence, synth/rendering layers, and sample-management features without rewriting the composition core.
