@@ -200,6 +200,15 @@ const renderLandingPage = () => `<!doctype html>
               <label>Reverse Mix
                 <input id="fxReverseMix" type="number" min="0" max="1" step="0.01" value="0.12" />
               </label>
+              <label>Richness
+                <input id="fxRichness" type="number" min="0" max="1" step="0.01" value="0.55" />
+              </label>
+              <label>CPU Saver
+                <select id="fxCpuSaver">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </label>
 
               <div class="full section-title">Transport + Controllers</div>
               <div class="full actions">
@@ -276,6 +285,8 @@ const renderLandingPage = () => `<!doctype html>
         midi: null,
         midiInputs: [],
         chain: null,
+        schedulerTimer: null,
+        playbackEndTimer: null,
       };
 
       const form = document.getElementById('generatorForm');
@@ -305,7 +316,7 @@ const renderLandingPage = () => `<!doctype html>
       const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
       const enhanceStepButtons = () => {
-        const targets = ['fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix','fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix'];
+        const targets = ['fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix','fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness'];
 
         targets.forEach((id) => {
           const input = document.getElementById(id);
@@ -388,32 +399,31 @@ const renderLandingPage = () => `<!doctype html>
         setStatus(state.lockDrumPattern ? 'Pattern locked and ready to sync.' : 'Pattern unlocked.');
       };
 
-      const scheduleLockedPattern = ({ ctx, startAt, beatLength, bars }) => {
-        const laneMap = { kick: 'kick', snare: 'snare', hat: 'hat' };
+      const buildLockedPatternEvents = ({ bars }) => {
+        const events = [];
+        if (!state.lockDrumPattern) {
+          return events;
+        }
 
         for (let bar = 0; bar < bars; bar += 1) {
-          for (const lane of Object.keys(laneMap)) {
+          ['kick', 'snare', 'hat'].forEach((lane) => {
             state.drumPattern[lane].forEach((hit, stepIndex) => {
               if (!hit) {
                 return;
               }
 
-              const beat = bar * 4 + stepIndex * 0.25;
-              const timeoutId = setTimeout(() => {
-                const when = startAt + beat * beatLength;
-                if (lane === 'kick') {
-                  scheduleKick({ ctx, when, duration: 0.14, velocity: 116 });
-                } else if (lane === 'snare') {
-                  scheduleNoise({ ctx, when, duration: 0.11, velocity: 106 });
-                } else {
-                  scheduleNoise({ ctx, when, duration: 0.06, velocity: 82 });
-                }
-              }, Math.max(0, beat * beatLength * 1000));
-
-              playback.timeouts.push(timeoutId);
+              events.push({
+                lane,
+                beat: bar * 4 + stepIndex * 0.25,
+                duration: lane === 'hat' ? 0.06 : 0.12,
+                velocity: lane === 'kick' ? 116 : lane === 'snare' ? 106 : 82,
+                midi: lane === 'kick' ? 36 : lane === 'snare' ? 38 : 42,
+              });
             });
-          }
+          });
         }
+
+        return events;
       };
 
       const registerNode = (node) => {
@@ -501,7 +511,17 @@ const renderLandingPage = () => `<!doctype html>
 
         playback.activeNodes.clear();
 
-        if (playback.chain?.stutterGate) {
+        if (playback.schedulerTimer) {
+          clearInterval(playback.schedulerTimer);
+          playback.schedulerTimer = null;
+        }
+
+        if (playback.playbackEndTimer) {
+          clearTimeout(playback.playbackEndTimer);
+          playback.playbackEndTimer = null;
+        }
+
+        if (playback.chain?.stutterGate && playback.context) {
           playback.chain.stutterGate.gain.setValueAtTime(1, playback.context.currentTime);
         }
       };
@@ -531,6 +551,8 @@ const renderLandingPage = () => `<!doctype html>
         stutterDepth: Number(document.getElementById('fxStutterDepth').value),
         glitchChance: Number(document.getElementById('fxGlitchChance').value),
         reverseMix: Number(document.getElementById('fxReverseMix').value),
+        richness: Number(document.getElementById('fxRichness').value),
+        cpuSaver: document.getElementById('fxCpuSaver').value === 'on',
       });
 
       const applyFxSettings = (ctx, settings) => {
@@ -550,7 +572,10 @@ const renderLandingPage = () => `<!doctype html>
         chain.wet.gain.setTargetAtTime(wet, ctx.currentTime, 0.02);
         chain.dry.gain.setTargetAtTime(1 - wet, ctx.currentTime, 0.02);
 
-        chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.8 : 0.72, ctx.currentTime, 0.02);
+        const richness = Math.max(0, Math.min(1, settings.richness ?? 0.55));
+        chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7, ctx.currentTime, 0.02);
+        chain.filter.frequency.setTargetAtTime(Math.max(80, Math.min(12000, settings.filterCutoff + richness * 2200)), ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(20, settings.filterQ + richness * 0.9)), ctx.currentTime, 0.02);
 
         clearFxTimers();
 
@@ -653,7 +678,7 @@ const renderLandingPage = () => `<!doctype html>
         registerNode(source);
       };
 
-      const synthProfileSettings = (profile) => {
+      const synthProfileSettings = (profile, fxSettings) => {
         if (profile === 'micro_inspired') {
           return {
             laneVoice: { bass: 'square', chords: 'sawtooth', melody: 'square', texture: 'triangle' },
@@ -674,8 +699,7 @@ const renderLandingPage = () => `<!doctype html>
         };
       };
 
-      const playEvent = ({ ctx, event, startAt, beatLength, fxSettings }) => {
-        const when = startAt + event.beat * beatLength;
+      const playEvent = ({ ctx, event, when, beatLength, fxSettings }) => {
         const duration = Math.max(0.03, event.duration * beatLength);
         const velocity = Number(event.velocity ?? 80);
 
@@ -689,13 +713,15 @@ const renderLandingPage = () => `<!doctype html>
           return;
         }
 
-        const profile = synthProfileSettings(fxSettings.synthProfile);
+        const profile = synthProfileSettings(fxSettings.synthProfile, fxSettings);
+        const richnessGain = 0.75 + (fxSettings.richness ?? 0.55) * 0.7;
+        const profileGain = (profile.gain[event.lane] ?? 0.06) * richnessGain;
         scheduleTone({
           ctx,
           frequency: midiToFreq(event.midi),
           when,
           duration,
-          gainAmount: (profile.gain[event.lane] ?? 0.06) * (velocity / 110),
+          gainAmount: profileGain * (velocity / 110),
           type: profile.laneVoice[event.lane] ?? 'sine',
           reverseMix: fxSettings.reverseMix,
         });
@@ -714,27 +740,36 @@ const renderLandingPage = () => `<!doctype html>
         const beatLength = 60 / project.meta.bpm;
         const startAt = ctx.currentTime + 0.08;
 
-        const allEvents = Object.values(project.tracks).flat().sort((left, right) => left.beat - right.beat);
+        const generatedEvents = Object.values(project.tracks).flat();
+        const lockedPatternEvents = buildLockedPatternEvents({ bars: project.meta.bars ?? 8 });
+        const allEvents = [...generatedEvents, ...lockedPatternEvents].sort((left, right) => left.beat - right.beat);
 
-        if (state.lockDrumPattern) {
-          scheduleLockedPattern({ ctx, startAt, beatLength, bars: project.meta.bars ?? 8 });
-        }
-        const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.4);
+        let cursor = 0;
+        const lookAheadSeconds = fxSettings.cpuSaver ? 0.12 : 0.22;
+        const schedulerTickMs = fxSettings.cpuSaver ? 35 : 20;
 
-        allEvents.forEach((event) => {
-          const timeoutId = setTimeout(() => {
-            playEvent({ ctx, event, startAt, beatLength, fxSettings });
-          }, Math.max(0, event.beat * beatLength * 1000));
+        const scheduleChunk = () => {
+          const now = ctx.currentTime;
+          while (cursor < allEvents.length) {
+            const event = allEvents[cursor];
+            const when = startAt + event.beat * beatLength;
+            if (when > now + lookAheadSeconds) {
+              break;
+            }
 
-          playback.timeouts.push(timeoutId);
-        });
+            playEvent({ ctx, event, when, beatLength, fxSettings });
+            cursor += 1;
+          }
+        };
 
-        const finishTimeout = setTimeout(() => {
+        scheduleChunk();
+        playback.schedulerTimer = setInterval(scheduleChunk, schedulerTickMs);
+
+        const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.6);
+        playback.playbackEndTimer = setTimeout(() => {
           setStatus('Playback finished.');
           stopPlayback();
         }, totalDurationSeconds * 1000);
-
-        playback.timeouts.push(finishTimeout);
       };
 
       const triggerPad = async (padName) => {
@@ -931,7 +966,7 @@ const renderLandingPage = () => `<!doctype html>
       syncBtn.addEventListener('click', async () => {
         try {
           await playProject(state.currentProject);
-          setStatus('Sync started: music + synth + drum pattern aligned.');
+          setStatus('Sync started: music + synth + locked drum pattern aligned.');
         } catch (error) {
           setStatus(error.message || 'Unable to sync play.', true);
         }

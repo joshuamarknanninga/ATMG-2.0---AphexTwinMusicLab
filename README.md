@@ -121,6 +121,13 @@ All manipulators process the original generated preview signal in-browser throug
 - Drum machine includes a **16-step pattern lock** for kick/snare/hat that can be toggled and edited live.
 - **Sync Play** starts music generation playback, synth engine, and locked drum pattern from the same transport start, keeping them aligned by BPM/beat grid.
 
+### Richness and performance optimization
+
+- Added a **Richness** control to thicken the synth voice behavior and harmonic weight.
+- Added **CPU Saver** mode to reduce scheduler/update load on lower-power phones/laptops.
+- Replaced per-note `setTimeout` blasting with a **lookahead scheduler** (Web Audio clock aligned) to reduce UI thread stalls/freezes during long songs.
+- Added dynamic transport cleanup to stop timers/nodes quickly and avoid runaway resource use.
+
 ## Research references used
 
 Implementation references used for this update:
