@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { env } from './config/env.js';
@@ -207,6 +207,13 @@ const renderLandingPage = () => `<!doctype html>
                   <option value="cinematic">Cinematic</option>
                 </select>
               </label>
+              <label>Engine Mode
+                <select id="fxEngineMode">
+                  <option value="hybrid" selected>Hybrid (Synth + Sampler)</option>
+                  <option value="synth_only">Synth Only</option>
+                  <option value="sampler_only">Sampler Only</option>
+                </select>
+              </label>
               <label>Filter Cutoff (Hz)
                 <input id="fxFilterCutoff" type="number" min="20" max="20000" step="10" value="1800" />
               </label>
@@ -395,6 +402,10 @@ const renderLandingPage = () => `<!doctype html>
         pcmWorkletReady: false,
         visualizerRaf: null,
         analyser: null,
+        sampleLibrary: {},
+        sampleRoundRobin: {},
+        sampleLoadPromise: null,
+        sampleLoadWarned: false,
       };
 
       const form = document.getElementById('generatorForm');
@@ -431,6 +442,15 @@ const renderLandingPage = () => `<!doctype html>
         hueBase: Math.random() * 360,
         speed: 0.6 + Math.random() * 1.2,
         bloom: 0.4 + Math.random() * 0.6,
+      };
+      const SAMPLE_MANIFEST = {
+        kick: { baseMidi: 36, low: ['drums/kick_low_1.wav', 'drums/kick_low_2.wav'], mid: ['drums/kick_mid_1.wav', 'drums/kick_mid_2.wav'], high: ['drums/kick_high_1.wav'] },
+        snare: { baseMidi: 38, low: ['drums/snare_low_1.wav', 'drums/snare_low_2.wav'], mid: ['drums/snare_mid_1.wav', 'drums/snare_mid_2.wav'], high: ['drums/snare_high_1.wav'] },
+        hat: { baseMidi: 42, low: ['drums/hat_low_1.wav', 'drums/hat_low_2.wav'], mid: ['drums/hat_mid_1.wav', 'drums/hat_mid_2.wav'], high: ['drums/hat_high_1.wav'] },
+        openHat: { baseMidi: 46, low: ['drums/open_hat_low_1.wav'], mid: ['drums/open_hat_mid_1.wav', 'drums/open_hat_mid_2.wav'], high: ['drums/open_hat_high_1.wav'] },
+        perc: { baseMidi: 50, low: ['drums/perc_low_1.wav'], mid: ['drums/perc_mid_1.wav', 'drums/perc_mid_2.wav'], high: ['drums/perc_high_1.wav'] },
+        chords: { baseMidi: 60, low: ['tonal/chords_low_1.wav', 'tonal/chords_low_2.wav'], mid: ['tonal/chords_mid_1.wav', 'tonal/chords_mid_2.wav'], high: ['tonal/chords_high_1.wav'] },
+        texture: { baseMidi: 60, low: ['tonal/texture_low_1.wav', 'tonal/texture_low_2.wav'], mid: ['tonal/texture_mid_1.wav', 'tonal/texture_mid_2.wav'], high: ['tonal/texture_high_1.wav'] },
       };
 
       const toOptions = (select, options, selected) => {
@@ -989,6 +1009,11 @@ const renderLandingPage = () => `<!doctype html>
         if (playback.context.state === 'suspended') {
           await playback.context.resume();
         }
+        await ensureSampleLibrary(playback.context);
+        if (!Object.keys(playback.sampleLibrary).length && !playback.sampleLoadWarned) {
+          playback.sampleLoadWarned = true;
+          setStatus('Sample layers not found; running oscillator fallback.', false);
+        }
 
         return playback.context;
       };
@@ -996,6 +1021,7 @@ const renderLandingPage = () => `<!doctype html>
       const getFxSettings = () => ({
         synthProfile: document.getElementById('synthProfile').value,
         busPreset: document.getElementById('fxBusPreset').value,
+        engineMode: document.getElementById('fxEngineMode').value,
         filterCutoff: Number(document.getElementById('fxFilterCutoff').value),
         filterQ: Number(document.getElementById('fxFilterQ').value),
         drive: Number(document.getElementById('fxDrive').value),
@@ -1108,7 +1134,103 @@ const renderLandingPage = () => `<!doctype html>
         }
       };
 
-      const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine', reverseMix = 0 }) => {
+      const velocityLayer = (velocity) => {
+        if (velocity < 55) return 'low';
+        if (velocity < 100) return 'mid';
+        return 'high';
+      };
+
+      const sampleKey = (lane, layer) => lane + ':' + layer;
+
+      const nextRoundRobin = (lane, layer, size) => {
+        if (!size) {
+          return -1;
+        }
+        const key = sampleKey(lane, layer);
+        const index = playback.sampleRoundRobin[key] ?? 0;
+        playback.sampleRoundRobin[key] = (index + 1) % size;
+        return index;
+      };
+
+      const decodeSample = async (ctx, path) => {
+        const response = await fetch('/assets/samples/' + path);
+        if (!response.ok) {
+          throw new Error('Missing sample: ' + path);
+        }
+        const bytes = await response.arrayBuffer();
+        return await ctx.decodeAudioData(bytes);
+      };
+
+      const ensureSampleLibrary = async (ctx) => {
+        if (playback.sampleLoadPromise) {
+          await playback.sampleLoadPromise;
+          return;
+        }
+        playback.sampleLoadPromise = (async () => {
+          const library = {};
+          await Promise.all(Object.entries(SAMPLE_MANIFEST).map(async ([lane, layers]) => {
+            library[lane] = { low: [], mid: [], high: [], baseMidi: layers.baseMidi ?? 60 };
+            await Promise.all(['low', 'mid', 'high'].map(async (layer) => {
+              const files = Array.isArray(layers[layer]) ? layers[layer] : [];
+              const decoded = await Promise.all(files.map(async (file) => {
+                try {
+                  return await decodeSample(ctx, file);
+                } catch (_error) {
+                  return null;
+                }
+              }));
+              library[lane][layer] = decoded.filter(Boolean);
+            }));
+          }));
+          playback.sampleLibrary = library;
+        })();
+
+        try {
+          await playback.sampleLoadPromise;
+        } catch (_error) {
+          playback.sampleLibrary = {};
+        }
+      };
+
+      const scheduleSampleLayer = ({ ctx, lane, when, duration, velocity, midi }) => {
+        const laneLibrary = playback.sampleLibrary[lane];
+        if (!laneLibrary) {
+          return false;
+        }
+        const layer = velocityLayer(velocity);
+        const candidates = laneLibrary[layer] ?? [];
+        const rrIndex = nextRoundRobin(lane, layer, candidates.length);
+        if (rrIndex < 0 || !candidates[rrIndex]) {
+          return false;
+        }
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        source.buffer = candidates[rrIndex];
+        const baseMidi = laneLibrary.baseMidi ?? 60;
+        if (Number.isFinite(midi)) {
+          source.playbackRate.setValueAtTime(Math.pow(2, ((midi ?? baseMidi) - baseMidi) / 12), when);
+        }
+        gain.gain.setValueAtTime(0.0001, when);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.003, velocity / 180), when + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+        source.connect(gain);
+        gain.connect(playback.chain.input);
+        source.start(when);
+        source.stop(when + Math.max(0.08, duration + 0.12));
+        registerNode(source);
+        return true;
+      };
+
+      const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine', reverseMix = 0, lane = 'melody', velocity = 90, engineMode = 'hybrid', midi = null }) => {
+        if (engineMode !== 'synth_only' && ['chords', 'texture'].includes(lane)) {
+          const played = scheduleSampleLayer({ ctx, lane, when, duration, velocity, midi });
+          if (played && engineMode === 'sampler_only') {
+            return;
+          }
+          if (played && engineMode === 'hybrid') {
+            gainAmount *= 0.62;
+          }
+        }
         const oscillator = ctx.createOscillator();
         const unisonOsc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -1139,7 +1261,13 @@ const renderLandingPage = () => `<!doctype html>
         registerNode(unisonOsc);
       };
 
-      const scheduleKick = ({ ctx, when, duration, velocity }) => {
+      const scheduleKick = ({ ctx, when, duration, velocity, engineMode = 'hybrid' }) => {
+        if (engineMode !== 'synth_only') {
+          const played = scheduleSampleLayer({ ctx, lane: 'kick', when, duration, velocity, midi: 36 });
+          if (played && engineMode === 'sampler_only') {
+            return;
+          }
+        }
         const oscillator = ctx.createOscillator();
         const punchOsc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -1173,7 +1301,13 @@ const renderLandingPage = () => `<!doctype html>
         registerNode(punchOsc);
       };
 
-      const scheduleNoise = ({ ctx, when, duration, velocity, lane = 'snare' }) => {
+      const scheduleNoise = ({ ctx, when, duration, velocity, lane = 'snare', engineMode = 'hybrid' }) => {
+        if (engineMode !== 'synth_only') {
+          const played = scheduleSampleLayer({ ctx, lane, when, duration, velocity });
+          if (played && engineMode === 'sampler_only') {
+            return;
+          }
+        }
         const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * Math.max(0.03, duration)));
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -1255,12 +1389,12 @@ const renderLandingPage = () => `<!doctype html>
         const velocityHumanized = Math.max(1, Math.min(127, velocity + Math.round(((Math.random() * 2) - 1) * humanize * 12)));
 
         if (event.lane === 'kick') {
-          scheduleKick({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized });
+          scheduleKick({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized, engineMode: fxSettings.engineMode });
           return;
         }
 
         if (['snare', 'hat', 'openHat', 'perc', 'glitch'].includes(event.lane)) {
-          scheduleNoise({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized, lane: event.lane });
+          scheduleNoise({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized, lane: event.lane, engineMode: fxSettings.engineMode });
           return;
         }
 
@@ -1275,6 +1409,10 @@ const renderLandingPage = () => `<!doctype html>
           gainAmount: profileGain * (velocityHumanized / 110),
           type: profile.laneVoice[event.lane] ?? 'sine',
           reverseMix: fxSettings.reverseMix,
+          lane: event.lane,
+          velocity: velocityHumanized,
+          engineMode: fxSettings.engineMode,
+          midi: event.midi,
         });
       };
 
@@ -1539,20 +1677,21 @@ const renderLandingPage = () => `<!doctype html>
 
       const triggerPad = async (padName) => {
         const ctx = await ensureContext();
-        applyFxSettings(ctx, getFxSettings());
+        const fxSettings = getFxSettings();
+        applyFxSettings(ctx, fxSettings);
         const when = ctx.currentTime + 0.01;
 
         if (padName === 'kick') {
-          scheduleKick({ ctx, when, duration: 0.15, velocity: 120 });
+          scheduleKick({ ctx, when, duration: 0.15, velocity: 120, engineMode: fxSettings.engineMode });
           return;
         }
 
         if (padName === 'snare') {
-          scheduleNoise({ ctx, when, duration: 0.12, velocity: 110 });
+          scheduleNoise({ ctx, when, duration: 0.12, velocity: 110, lane: 'snare', engineMode: fxSettings.engineMode });
           return;
         }
 
-        scheduleNoise({ ctx, when, duration: 0.06, velocity: 86 });
+        scheduleNoise({ ctx, when, duration: 0.06, velocity: 86, lane: 'hat', engineMode: fxSettings.engineMode });
       };
 
       const connectMidi = async () => {
@@ -1578,8 +1717,9 @@ const renderLandingPage = () => `<!doctype html>
           }
 
           const ctx = await ensureContext();
-          applyFxSettings(ctx, getFxSettings());
-          const profile = synthProfileSettings(getFxSettings().synthProfile);
+          const fxSettings = getFxSettings();
+          applyFxSettings(ctx, fxSettings);
+          const profile = synthProfileSettings(fxSettings.synthProfile);
           scheduleTone({
             ctx,
             frequency: midiToFreq(note),
@@ -1587,7 +1727,11 @@ const renderLandingPage = () => `<!doctype html>
             duration: 0.35,
             gainAmount: (profile.gain.melody ?? 0.08) * (velocity / 127),
             type: profile.laneVoice.melody ?? 'sine',
-            reverseMix: getFxSettings().reverseMix,
+            reverseMix: fxSettings.reverseMix,
+            lane: 'melody',
+            velocity,
+            engineMode: fxSettings.engineMode,
+            midi: note,
           });
         };
 
@@ -1875,7 +2019,7 @@ const renderLandingPage = () => `<!doctype html>
       });
 
       const liveFxInputs = [
-        'synthProfile','fxBusPreset','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
+        'synthProfile','fxBusPreset','fxEngineMode','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
         'fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxWarmth','fxHumanize','fxCpuSaver','fxTapeDelay',
       ];
       liveFxInputs.forEach((id) => {
@@ -1937,6 +2081,34 @@ const routeRequest = async (req, res) => {
       return;
     } catch (_error) {
       return fail(res, 404, 'lamejs asset unavailable');
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/assets/samples/')) {
+    const samplesRoot = resolve(appDirname, '../assets/samples');
+    const relativePath = url.pathname.slice('/assets/samples/'.length);
+    const filePath = resolve(samplesRoot, relativePath);
+    if (!filePath.startsWith(samplesRoot)) {
+      return fail(res, 400, 'invalid sample path');
+    }
+    try {
+      const content = await readFile(filePath);
+      const ext = extname(filePath).toLowerCase();
+      const contentType = ext === '.wav'
+        ? 'audio/wav'
+        : ext === '.mp3'
+          ? 'audio/mpeg'
+          : ext === '.ogg'
+            ? 'audio/ogg'
+            : 'application/octet-stream';
+      res.writeHead(200, {
+        ...commonHeaders(origin),
+        'content-type': contentType,
+      });
+      res.end(content);
+      return;
+    } catch (_error) {
+      return fail(res, 404, 'sample asset unavailable');
     }
   }
 

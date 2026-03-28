@@ -127,6 +127,44 @@ All manipulators process the original generated preview signal in-browser throug
 - Drum machine includes a **16-step pattern lock** for kick/snare/hat that can be toggled and edited live.
 - **Sync Play** starts music generation playback, synth engine, and locked drum pattern from the same transport start, keeping them aligned by BPM/beat grid.
 - Added **Groove Template** control (`straight`, `dilla`, `broken_beat`, `garage_swing`) that applies lane-aware timing/velocity shaping for less rigid playback feel.
+- Added **Engine Mode** control:
+  - `hybrid` (default): oscillator synthesis + sample layer stack,
+  - `synth_only`: force oscillator engine only,
+  - `sampler_only`: force sample voices only (falls back to synth if missing assets).
+- Added **Master Bus Preset** macros (`clean`, `warm`, `club`, `cinematic`) for instant top-level tone shaping over the existing FX chain.
+
+### Hybrid synth + sampler engine (v2 creator feature)
+
+- The browser engine now supports **hybrid voice dispatch**:
+  - Drums (`kick`, `snare`, `hat`, `openHat`, `perc`) can trigger sample layers with synth fallback.
+  - Tonal lanes (`chords`, `texture`) can trigger pitched sample layers with oscillator support retained.
+- Added **velocity layers** (`low`, `mid`, `high`) and **round-robin** sample selection to reduce repetitive machine-gun playback.
+- The sample loader is non-blocking and resilient:
+  - if assets are missing/unavailable, playback automatically continues on oscillator fallback.
+  - warning is surfaced in UI status once, without interrupting transport.
+
+### Sample asset conventions
+
+Place sample files under:
+
+- `server/assets/samples/drums/`
+- `server/assets/samples/tonal/`
+
+Current expected naming (extensible):
+
+- Drums:
+  - `kick_low_1.wav`, `kick_mid_1.wav`, `kick_high_1.wav`
+  - `snare_low_1.wav`, `snare_mid_1.wav`, `snare_high_1.wav`
+  - `hat_low_1.wav`, `hat_mid_1.wav`, `hat_high_1.wav`
+  - `open_hat_low_1.wav`, `open_hat_mid_1.wav`, `open_hat_high_1.wav`
+  - `perc_low_1.wav`, `perc_mid_1.wav`, `perc_high_1.wav`
+- Tonal:
+  - `chords_low_1.wav`, `chords_mid_1.wav`, `chords_high_1.wav`
+  - `texture_low_1.wav`, `texture_mid_1.wav`, `texture_high_1.wav`
+
+Server asset route:
+
+- `GET /assets/samples/<path>` serves `.wav` / `.mp3` / `.ogg` sample files from `server/assets/samples`.
 
 ### Richness and performance optimization
 
