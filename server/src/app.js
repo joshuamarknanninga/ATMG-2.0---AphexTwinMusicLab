@@ -99,6 +99,14 @@ const renderLandingPage = () => `<!doctype html>
       .pad { border-color: #4f67bf; background: #172557; }
       .fx-note { margin-top: 8px; color: #a8b9f4; font-size: 12px; }
       .midi-state { font-size: 12px; color: #9ec2ff; }
+      .stepper-wrap { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+      .stepper-buttons { display: grid; gap: 4px; }
+      .stepper-buttons button { width: 28px; min-height: 24px; padding: 0; font-size: 14px; border-radius: 7px; }
+      .pattern-grid { display: grid; gap: 6px; margin-top: 8px; }
+      .pattern-row { display: grid; gap: 6px; grid-template-columns: 58px repeat(16, minmax(0, 1fr)); align-items: center; }
+      .pattern-cell { min-height: 26px; padding: 0; background: #0f1d46; border: 1px solid #3553b3; border-radius: 6px; }
+      .pattern-cell.active { background: #4f6fff; }
+      .pattern-label { font-size: 12px; color: #9eb1f8; }
     </style>
   </head>
   <body>
@@ -200,6 +208,7 @@ const renderLandingPage = () => `<!doctype html>
                 <button class="secondary" type="button" id="playBtn">Play Project</button>
                 <button class="secondary" type="button" id="stopBtn">Stop</button>
                 <button class="secondary" type="button" id="midiBtn">Connect MIDI</button>
+                <button class="secondary" type="button" id="syncBtn">Sync Play</button>
               </div>
               <div class="full midi-state" id="midiState">MIDI: not connected</div>
 
@@ -209,6 +218,11 @@ const renderLandingPage = () => `<!doctype html>
                 <button class="pad" type="button" data-pad="snare">Snare</button>
                 <button class="pad" type="button" data-pad="hat">Hat</button>
               </div>
+              <div class="full section-title">Pattern Lock + Sync</div>
+              <div class="full actions">
+                <button class="secondary" type="button" id="lockPatternBtn">Lock Pattern: Off</button>
+              </div>
+              <div class="full pattern-grid" id="patternGrid"></div>
             </form>
             <p class="status" id="status">Loading presets…</p>
             <p class="fx-note">Effects process the original browser synth signal chain in real-time: filter → distortion → delay + stutter/glitch gate, with reverse-style envelope manipulation for tonal notes.</p>
@@ -245,6 +259,12 @@ const renderLandingPage = () => `<!doctype html>
         moods: [],
         scales: [],
         currentProject: null,
+        lockDrumPattern: false,
+        drumPattern: {
+          kick: [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+          snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+          hat:  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+        },
       };
 
       const playback = {
@@ -268,6 +288,9 @@ const renderLandingPage = () => `<!doctype html>
       const playBtn = document.getElementById('playBtn');
       const stopBtn = document.getElementById('stopBtn');
       const midiBtn = document.getElementById('midiBtn');
+      const syncBtn = document.getElementById('syncBtn');
+      const lockPatternBtn = document.getElementById('lockPatternBtn');
+      const patternGridEl = document.getElementById('patternGrid');
       const midiStateEl = document.getElementById('midiState');
 
       const toOptions = (select, options, selected) => {
@@ -280,6 +303,118 @@ const renderLandingPage = () => `<!doctype html>
       };
 
       const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+      const enhanceStepButtons = () => {
+        const targets = ['fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix','fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix'];
+
+        targets.forEach((id) => {
+          const input = document.getElementById(id);
+          if (!input || input.dataset.enhanced === '1') {
+            return;
+          }
+
+          const step = Number(input.step || 1) || 1;
+          const min = Number.isFinite(Number(input.min)) ? Number(input.min) : -Infinity;
+          const max = Number.isFinite(Number(input.max)) ? Number(input.max) : Infinity;
+
+          const wrap = document.createElement('div');
+          wrap.className = 'stepper-wrap';
+
+          const btnWrap = document.createElement('div');
+          btnWrap.className = 'stepper-buttons';
+
+          const up = document.createElement('button');
+          up.type = 'button';
+          up.textContent = '+';
+          up.className = 'secondary';
+
+          const down = document.createElement('button');
+          down.type = 'button';
+          down.textContent = '−';
+          down.className = 'secondary';
+
+          const adjust = (delta) => {
+            const current = Number(input.value || 0);
+            const next = Math.max(min, Math.min(max, current + delta));
+            const decimals = step.toString().includes('.') ? step.toString().split('.')[1].length : 0;
+            input.value = next.toFixed(decimals);
+            input.dispatchEvent(new Event('change'));
+          };
+
+          up.addEventListener('click', () => adjust(step));
+          down.addEventListener('click', () => adjust(-step));
+
+          input.parentNode.insertBefore(wrap, input);
+          wrap.appendChild(input);
+          btnWrap.appendChild(up);
+          btnWrap.appendChild(down);
+          wrap.appendChild(btnWrap);
+          input.dataset.enhanced = '1';
+        });
+      };
+
+      const renderPatternGrid = () => {
+        const lanes = ['kick','snare','hat'];
+        patternGridEl.innerHTML = '';
+
+        lanes.forEach((lane) => {
+          const row = document.createElement('div');
+          row.className = 'pattern-row';
+
+          const label = document.createElement('div');
+          label.className = 'pattern-label';
+          label.textContent = lane.toUpperCase();
+          row.appendChild(label);
+
+          state.drumPattern[lane].forEach((value, step) => {
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'pattern-cell' + (value ? ' active' : '');
+            cell.textContent = value ? '●' : '○';
+            cell.addEventListener('click', () => {
+              state.drumPattern[lane][step] = state.drumPattern[lane][step] ? 0 : 1;
+              renderPatternGrid();
+            });
+            row.appendChild(cell);
+          });
+
+          patternGridEl.appendChild(row);
+        });
+      };
+
+      const lockPatternToggle = () => {
+        state.lockDrumPattern = !state.lockDrumPattern;
+        lockPatternBtn.textContent = 'Lock Pattern: ' + (state.lockDrumPattern ? 'On' : 'Off');
+        setStatus(state.lockDrumPattern ? 'Pattern locked and ready to sync.' : 'Pattern unlocked.');
+      };
+
+      const scheduleLockedPattern = ({ ctx, startAt, beatLength, bars }) => {
+        const laneMap = { kick: 'kick', snare: 'snare', hat: 'hat' };
+
+        for (let bar = 0; bar < bars; bar += 1) {
+          for (const lane of Object.keys(laneMap)) {
+            state.drumPattern[lane].forEach((hit, stepIndex) => {
+              if (!hit) {
+                return;
+              }
+
+              const beat = bar * 4 + stepIndex * 0.25;
+              const timeoutId = setTimeout(() => {
+                const when = startAt + beat * beatLength;
+                if (lane === 'kick') {
+                  scheduleKick({ ctx, when, duration: 0.14, velocity: 116 });
+                } else if (lane === 'snare') {
+                  scheduleNoise({ ctx, when, duration: 0.11, velocity: 106 });
+                } else {
+                  scheduleNoise({ ctx, when, duration: 0.06, velocity: 82 });
+                }
+              }, Math.max(0, beat * beatLength * 1000));
+
+              playback.timeouts.push(timeoutId);
+            });
+          }
+        }
+      };
 
       const registerNode = (node) => {
         playback.activeNodes.add(node);
@@ -580,6 +715,10 @@ const renderLandingPage = () => `<!doctype html>
         const startAt = ctx.currentTime + 0.08;
 
         const allEvents = Object.values(project.tracks).flat().sort((left, right) => left.beat - right.beat);
+
+        if (state.lockDrumPattern) {
+          scheduleLockedPattern({ ctx, startAt, beatLength, bars: project.meta.bars ?? 8 });
+        }
         const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.4);
 
         allEvents.forEach((event) => {
@@ -789,6 +928,17 @@ const renderLandingPage = () => `<!doctype html>
         }
       });
 
+      syncBtn.addEventListener('click', async () => {
+        try {
+          await playProject(state.currentProject);
+          setStatus('Sync started: music + synth + drum pattern aligned.');
+        } catch (error) {
+          setStatus(error.message || 'Unable to sync play.', true);
+        }
+      });
+
+      lockPatternBtn.addEventListener('click', lockPatternToggle);
+
       document.querySelectorAll('[data-pad]').forEach((pad) => {
         pad.addEventListener('click', async () => {
           try {
@@ -810,6 +960,9 @@ const renderLandingPage = () => `<!doctype html>
           generateBtn.disabled = false;
         }
       });
+
+      enhanceStepButtons();
+      renderPatternGrid();
 
       loadPresets().catch((error) => {
         setStatus(error.message || 'Failed to initialize UI.', true);

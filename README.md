@@ -115,6 +115,12 @@ The root UI now includes a pedalboard-style signal manipulator section with real
 
 All manipulators process the original generated preview signal in-browser through a single FX chain.
 
+### Pedal controls and synchronization
+
+- Every numeric Synth + Multi FX value now has explicit **+ / − step buttons** for mouse-first control (instead of relying on native input arrows only).
+- Drum machine includes a **16-step pattern lock** for kick/snare/hat that can be toggled and edited live.
+- **Sync Play** starts music generation playback, synth engine, and locked drum pattern from the same transport start, keeping them aligned by BPM/beat grid.
+
 ## Research references used
 
 Implementation references used for this update:
