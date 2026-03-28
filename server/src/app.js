@@ -199,6 +199,14 @@ const renderLandingPage = () => `<!doctype html>
                   <option value="poly_clean">Poly Clean</option>
                 </select>
               </label>
+              <label>Master Bus Preset
+                <select id="fxBusPreset">
+                  <option value="clean">Clean</option>
+                  <option value="warm" selected>Warm</option>
+                  <option value="club">Club</option>
+                  <option value="cinematic">Cinematic</option>
+                </select>
+              </label>
               <label>Filter Cutoff (Hz)
                 <input id="fxFilterCutoff" type="number" min="20" max="20000" step="10" value="1800" />
               </label>
@@ -987,6 +995,7 @@ const renderLandingPage = () => `<!doctype html>
 
       const getFxSettings = () => ({
         synthProfile: document.getElementById('synthProfile').value,
+        busPreset: document.getElementById('fxBusPreset').value,
         filterCutoff: Number(document.getElementById('fxFilterCutoff').value),
         filterQ: Number(document.getElementById('fxFilterQ').value),
         drive: Number(document.getElementById('fxDrive').value),
@@ -1004,41 +1013,59 @@ const renderLandingPage = () => `<!doctype html>
         tapeDelay: document.getElementById('fxTapeDelay').checked,
       });
 
+      const busPresetProfile = (preset) => {
+        if (preset === 'club') {
+          return { filterCutoffMul: 0.82, filterQAdd: 0.8, driveAdd: 0.24, delayMixMul: 1.15, delayFeedbackAdd: 0.08, delayToneHz: 7400, outputGainAdd: 0.04 };
+        }
+        if (preset === 'cinematic') {
+          return { filterCutoffMul: 0.7, filterQAdd: 0.25, driveAdd: 0.1, delayMixMul: 1.25, delayFeedbackAdd: 0.14, delayToneHz: 5200, outputGainAdd: 0.01 };
+        }
+        if (preset === 'clean') {
+          return { filterCutoffMul: 1.08, filterQAdd: -0.2, driveAdd: -0.1, delayMixMul: 0.82, delayFeedbackAdd: -0.03, delayToneHz: 18000, outputGainAdd: -0.02 };
+        }
+        return { filterCutoffMul: 0.9, filterQAdd: 0.35, driveAdd: 0.08, delayMixMul: 1, delayFeedbackAdd: 0.03, delayToneHz: 9800, outputGainAdd: 0 };
+      };
+
       const applyFxSettings = (ctx, settings) => {
         const chain = playback.chain;
         if (!chain) {
           return;
         }
+        const preset = busPresetProfile(settings.busPreset);
+        const cutoffBase = settings.filterCutoff * preset.filterCutoffMul;
+        const filterQBase = settings.filterQ + preset.filterQAdd;
+        const driveBase = settings.drive + preset.driveAdd;
+        const delayFeedbackBase = settings.delayFeedback + preset.delayFeedbackAdd;
 
-        chain.filter.frequency.setTargetAtTime(Math.max(20, Math.min(20000, settings.filterCutoff)), ctx.currentTime, 0.02);
-        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, settings.filterQ)), ctx.currentTime, 0.02);
+        chain.filter.frequency.setTargetAtTime(Math.max(20, Math.min(20000, cutoffBase)), ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, filterQBase)), ctx.currentTime, 0.02);
 
-        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, settings.drive)));
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, driveBase)));
         chain.delay.delayTime.setTargetAtTime(Math.max(0, Math.min(2.5, settings.delayTime)), ctx.currentTime, 0.02);
-        chain.delayFeedback.gain.setTargetAtTime(Math.max(0, Math.min(0.99, settings.delayFeedback)), ctx.currentTime, 0.02);
+        chain.delayFeedback.gain.setTargetAtTime(Math.max(0, Math.min(0.99, delayFeedbackBase)), ctx.currentTime, 0.02);
 
-        const wet = Math.max(0, Math.min(1, settings.delayMix));
+        const wet = Math.max(0, Math.min(1, settings.delayMix * preset.delayMixMul));
         chain.wet.gain.setTargetAtTime(wet, ctx.currentTime, 0.02);
         chain.dry.gain.setTargetAtTime(1 - wet, ctx.currentTime, 0.02);
         const tapeOn = Boolean(settings.tapeDelay);
-        chain.delayTone.frequency.setTargetAtTime(tapeOn ? 2600 : 18000, ctx.currentTime, 0.03);
+        chain.delayTone.frequency.setTargetAtTime(tapeOn ? Math.min(2600, preset.delayToneHz) : preset.delayToneHz, ctx.currentTime, 0.03);
         chain.delayFeedback.gain.setTargetAtTime(
-          Math.max(0, Math.min(0.99, settings.delayFeedback + (tapeOn ? 0.08 : 0))),
+          Math.max(0, Math.min(0.99, delayFeedbackBase + (tapeOn ? 0.08 : 0))),
           ctx.currentTime,
           0.03,
         );
-        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, settings.drive + (tapeOn ? 0.04 : 0))));
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, driveBase + (tapeOn ? 0.04 : 0))));
 
         const richness = Math.max(0, Math.min(1, settings.richness ?? 0.55));
         const warmth = Math.max(0, Math.min(1, settings.warmth ?? 0.48));
-        chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7, ctx.currentTime, 0.02);
+        chain.output.gain.setTargetAtTime((settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7) + preset.outputGainAdd, ctx.currentTime, 0.02);
         chain.filter.frequency.setTargetAtTime(
-          Math.max(20, Math.min(20000, settings.filterCutoff + richness * 2200 - warmth * 900)),
+          Math.max(20, Math.min(20000, cutoffBase + richness * 2200 - warmth * 900)),
           ctx.currentTime,
           0.02,
         );
-        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, settings.filterQ + richness * 0.9)), ctx.currentTime, 0.02);
-        chain.output.gain.setTargetAtTime((settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7) + warmth * 0.04, ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, filterQBase + richness * 0.9)), ctx.currentTime, 0.02);
+        chain.output.gain.setTargetAtTime((settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7) + warmth * 0.04 + preset.outputGainAdd, ctx.currentTime, 0.02);
 
         clearFxTimers();
 
@@ -1848,7 +1875,7 @@ const renderLandingPage = () => `<!doctype html>
       });
 
       const liveFxInputs = [
-        'synthProfile','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
+        'synthProfile','fxBusPreset','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
         'fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxWarmth','fxHumanize','fxCpuSaver','fxTapeDelay',
       ];
       liveFxInputs.forEach((id) => {
