@@ -42,6 +42,10 @@ test('root and favicon endpoints avoid confusing browser 404s', async () => {
   assert.match(root.body, /Mix Banks \+ Auto Beat Matching/);
   assert.match(root.body, /Auto Match Banks/);
   assert.match(root.body, /Tempo Match/);
+  assert.match(root.body, /Amen Break/);
+  assert.match(root.body, /Funky Drummer/);
+  assert.match(root.body, /When the Levee Breaks/);
+  assert.match(root.body, /Apache Break/);
   assert.equal(favicon.statusCode, 204);
 
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

@@ -1,4 +1,7 @@
 import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { env } from './config/env.js';
 import { requireSession } from './middleware/auth.js';
@@ -11,6 +14,7 @@ import { HttpError } from './utils/errors.js';
 import { fail, ok, readJsonBody } from './utils/http.js';
 
 const resolveOrigin = (req) => (env.CORS_ORIGIN === '*' ? '*' : req.headers.origin ?? env.CORS_ORIGIN);
+const appDirname = dirname(fileURLToPath(import.meta.url));
 
 const commonHeaders = (origin) => ({
   'access-control-allow-origin': origin,
@@ -242,6 +246,14 @@ const renderLandingPage = () => `<!doctype html>
               </div>
               <div class="full section-title">Pattern Lock + Sync</div>
               <label class="full toggle-row"><input id="lockPatternToggle" type="checkbox" /><span class="toggle-text">Lock Pattern</span></label>
+              <label class="full">Drum Preset
+                <select id="drumPresetSelect">
+                  <option value="amen_break">Amen Break</option>
+                  <option value="funky_drummer">Funky Drummer</option>
+                  <option value="when_the_levee_breaks">When the Levee Breaks</option>
+                  <option value="apache_break">Apache Break</option>
+                </select>
+              </label>
               <div class="full pattern-grid" id="patternGrid"></div>
 
               <div class="full section-title">Mix Banks + Auto Beat Matching</div>
@@ -296,7 +308,14 @@ const renderLandingPage = () => `<!doctype html>
       </div>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <script src="/vendor/lame.min.js"></script>
+    <script>
+      if (!window.lamejs) {
+        const fallback = document.createElement('script');
+        fallback.src = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js';
+        document.head.appendChild(fallback);
+      }
+    </script>
     <script>
       const state = {
         defaults: null,
@@ -346,6 +365,7 @@ const renderLandingPage = () => `<!doctype html>
       const midiBtn = document.getElementById('midiBtn');
       const syncBtn = document.getElementById('syncBtn');
       const lockPatternToggleEl = document.getElementById('lockPatternToggle');
+      const drumPresetSelectEl = document.getElementById('drumPresetSelect');
       const downloadMixBtn = document.getElementById('downloadMixBtn');
       const patternGridEl = document.getElementById('patternGrid');
       const midiStateEl = document.getElementById('midiState');
@@ -360,6 +380,29 @@ const renderLandingPage = () => `<!doctype html>
 
       const toOptions = (select, options, selected) => {
         select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
+      };
+
+      const DRUM_PRESETS = {
+        amen_break: {
+          kick: [1,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0],
+          snare:[0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,1],
+          hat:  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        },
+        funky_drummer: {
+          kick: [1,0,0,0,0,0,1,0,1,0,0,0,0,1,0,0],
+          snare:[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0],
+          hat:  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+        },
+        when_the_levee_breaks: {
+          kick: [1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+          snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+          hat:  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+        },
+        apache_break: {
+          kick: [1,0,0,1,0,0,1,0,1,0,0,1,0,0,1,0],
+          snare:[0,0,1,0,0,1,0,0,0,0,1,0,0,1,0,0],
+          hat:  [1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1],
+        },
       };
 
       const setStatus = (message, isError = false) => {
@@ -450,6 +493,20 @@ const renderLandingPage = () => `<!doctype html>
       const lockPatternToggle = () => {
         state.lockDrumPattern = lockPatternToggleEl.checked;
         setStatus(state.lockDrumPattern ? 'Pattern locked and ready to sync.' : 'Pattern unlocked.');
+      };
+
+      const applyDrumPreset = (presetId) => {
+        const preset = DRUM_PRESETS[presetId];
+        if (!preset) {
+          return;
+        }
+        state.drumPattern = {
+          kick: [...preset.kick],
+          snare: [...preset.snare],
+          hat: [...preset.hat],
+        };
+        renderPatternGrid();
+        setStatus('Drum preset loaded: ' + presetId.replaceAll('_', ' ') + '.');
       };
 
       const buildLockedPatternEvents = ({ bars }) => {
@@ -1049,6 +1106,49 @@ const renderLandingPage = () => `<!doctype html>
         return output;
       };
 
+      const encodeWavBlob = (pcm16, sampleRate) => {
+        const buffer = new ArrayBuffer(44 + pcm16.length * 2);
+        const view = new DataView(buffer);
+        const writeString = (offset, text) => {
+          for (let i = 0; i < text.length; i += 1) {
+            view.setUint8(offset + i, text.charCodeAt(i));
+          }
+        };
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + pcm16.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, pcm16.length * 2, true);
+
+        let offset = 44;
+        for (let i = 0; i < pcm16.length; i += 1) {
+          view.setInt16(offset, pcm16[i], true);
+          offset += 2;
+        }
+
+        return new Blob([buffer], { type: 'audio/wav' });
+      };
+
+      const triggerDownload = ({ blob, extension }) => {
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = 'atmg-mix-' + Date.now() + '.' + extension;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 4000);
+      };
+
       const ensurePcmWorklet = async (ctx) => {
         if (playback.pcmWorkletReady) {
           return;
@@ -1115,41 +1215,34 @@ const renderLandingPage = () => `<!doctype html>
           return;
         }
 
-        if (!window.lamejs || typeof window.lamejs.Mp3Encoder !== 'function') {
-          setStatus('MP3 encoder unavailable. Check network and try again.', true);
+        const merged = mergeFloatChunks(playback.recordingChunks);
+        const pcm16 = floatToInt16(merged);
+
+        if (window.lamejs && typeof window.lamejs.Mp3Encoder === 'function') {
+          const encoder = new window.lamejs.Mp3Encoder(1, sampleRate, 192);
+          const mp3Chunks = [];
+          const blockSize = 1152;
+
+          for (let index = 0; index < pcm16.length; index += blockSize) {
+            const chunk = pcm16.subarray(index, index + blockSize);
+            const encoded = encoder.encodeBuffer(chunk);
+            if (encoded.length) {
+              mp3Chunks.push(new Uint8Array(encoded));
+            }
+          }
+          const finalChunk = encoder.flush();
+          if (finalChunk.length) {
+            mp3Chunks.push(new Uint8Array(finalChunk));
+          }
+          triggerDownload({ blob: new Blob(mp3Chunks, { type: 'audio/mpeg' }), extension: 'mp3' });
+          playback.recordingChunks = [];
+          setStatus('Mix downloaded as MP3 (iTunes compatible).');
           return;
         }
 
-        const merged = mergeFloatChunks(playback.recordingChunks);
-        const pcm16 = floatToInt16(merged);
-        const encoder = new window.lamejs.Mp3Encoder(1, sampleRate, 192);
-        const mp3Chunks = [];
-        const blockSize = 1152;
-
-        for (let index = 0; index < pcm16.length; index += blockSize) {
-          const chunk = pcm16.subarray(index, index + blockSize);
-          const encoded = encoder.encodeBuffer(chunk);
-          if (encoded.length) {
-            mp3Chunks.push(new Uint8Array(encoded));
-          }
-        }
-
-        const finalChunk = encoder.flush();
-        if (finalChunk.length) {
-          mp3Chunks.push(new Uint8Array(finalChunk));
-        }
-
-        const blob = new Blob(mp3Chunks, { type: 'audio/mpeg' });
-        const href = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = href;
-        a.download = 'atmg-mix-' + Date.now() + '.mp3';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(href), 4000);
+        triggerDownload({ blob: encodeWavBlob(pcm16, sampleRate), extension: 'wav' });
         playback.recordingChunks = [];
-        setStatus('Mix downloaded as MP3 (iTunes compatible).');
+        setStatus('MP3 encoder unavailable, downloaded WAV fallback instead.');
       };
 
       const playProject = async (project, options = {}) => {
@@ -1459,6 +1552,7 @@ const renderLandingPage = () => `<!doctype html>
       });
 
       lockPatternToggleEl.addEventListener('change', lockPatternToggle);
+      drumPresetSelectEl.addEventListener('change', () => applyDrumPreset(drumPresetSelectEl.value));
       bankAFileEl.addEventListener('change', () => {
         state.banks.a = { file: bankAFileEl.files?.[0] ?? null, buffer: null, analysis: null };
         bankAAnalysisEl.textContent = state.banks.a.file ? 'Ready to analyze: ' + state.banks.a.file.name : 'No track loaded.';
@@ -1515,6 +1609,7 @@ const renderLandingPage = () => `<!doctype html>
 
       enhanceStepButtons();
       lockPatternToggleEl.checked = state.lockDrumPattern;
+      applyDrumPreset(drumPresetSelectEl.value);
       renderPatternGrid();
 
       loadPresets().catch((error) => {
@@ -1538,6 +1633,20 @@ const routeRequest = async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/favicon.ico') {
     return sendEmpty(res, 204, origin);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/vendor/lame.min.js') {
+    try {
+      const content = await readFile(join(appDirname, '../../node_modules/lamejs/lame.min.js'), 'utf8');
+      res.writeHead(200, {
+        ...commonHeaders(origin),
+        'content-type': 'application/javascript; charset=utf-8',
+      });
+      res.end(content);
+      return;
+    } catch (_error) {
+      return fail(res, 404, 'lamejs asset unavailable');
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/health') {

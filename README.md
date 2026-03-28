@@ -153,6 +153,19 @@ All manipulators process the original generated preview signal in-browser throug
 - Locked drum-pattern playback now avoids layering with generated drum tracks during sync playback, improving beat alignment with transport.
 - Drum synthesis was updated for richer tone (layered kick body/punch and fuller snare/noise shaping).
 - FX and synth controls now re-apply live during playback so changes are heard on the fly without restarting transport.
+- Added 4 classic breakbeat-style drum presets for pattern lock workflow:
+  - **Amen Break**
+  - **Funky Drummer**
+  - **When the Levee Breaks**
+  - **Apache Break**
+- MP3 export now serves `lamejs` locally when available and falls back to WAV download if MP3 encoding is unavailable.
+
+### Drum preset research references
+
+- Amen break (widely sampled): https://en.wikipedia.org/wiki/Amen_break
+- Funky Drummer (widely sampled): https://en.wikipedia.org/wiki/Funky_Drummer
+- When the Levee Breaks (widely sampled Bonham beat): https://en.wikipedia.org/wiki/When_the_Levee_Breaks
+- Apache (Incredible Bongo Band break): https://en.wikipedia.org/wiki/Apache_(instrumental)
 
 ## Research references used
 
