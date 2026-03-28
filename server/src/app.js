@@ -77,7 +77,7 @@ const renderLandingPage = () => `<!doctype html>
       }
       input:focus, select:focus, button:focus, textarea:focus { outline: 2px solid #7691ff; outline-offset: 1px; }
       button { cursor: pointer; font-weight: 600; }
-      .actions { display: flex; gap: 8px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
       .primary { background: linear-gradient(180deg, #4c6ff5, #3f58ba); border-color: #5572eb; }
       .secondary { background: #1a2756; }
       .status {
@@ -104,7 +104,7 @@ const renderLandingPage = () => `<!doctype html>
     <main>
       <span class="badge">ATMG 2.0</span>
       <h1>Mouse-friendly music generation UI</h1>
-      <p class="subtitle">Use controls on the left to choose presets and composition settings, then generate deterministic projects you can inspect on the right. Same seed + same settings = same result.</p>
+      <p class="subtitle">Choose settings, generate a deterministic project, and play it directly in your browser using the built-in synth preview.</p>
       <div class="layout">
         <section class="panel" aria-label="Generation Controls">
           <div class="panel-head"><h2>Generation Controls</h2></div>
@@ -155,10 +155,12 @@ const renderLandingPage = () => `<!doctype html>
               <div class="full actions">
                 <button class="primary" type="submit" id="generateBtn">Generate Project</button>
                 <button class="secondary" type="button" id="loadDefaultsBtn">Load Defaults</button>
+                <button class="secondary" type="button" id="playBtn">Play Project</button>
+                <button class="secondary" type="button" id="stopBtn">Stop</button>
               </div>
             </form>
             <p class="status" id="status">Loading presets…</p>
-            <p class="muted">Tip: Click <strong>Load Defaults</strong> after changing preset to quickly reset controls.</p>
+            <p class="muted">Tip: After generating, click <strong>Play Project</strong> to audition the arrangement from the JSON output.</p>
           </div>
         </section>
 
@@ -189,6 +191,13 @@ const renderLandingPage = () => `<!doctype html>
         presets: [],
         moods: [],
         scales: [],
+        currentProject: null,
+      };
+
+      const playback = {
+        context: null,
+        timeouts: [],
+        activeNodes: new Set(),
       };
 
       const form = document.getElementById('generatorForm');
@@ -198,6 +207,8 @@ const renderLandingPage = () => `<!doctype html>
       const moodEl = document.getElementById('mood');
       const scaleEl = document.getElementById('scale');
       const generateBtn = document.getElementById('generateBtn');
+      const playBtn = document.getElementById('playBtn');
+      const stopBtn = document.getElementById('stopBtn');
 
       const toOptions = (select, options, selected) => {
         select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
@@ -206,6 +217,174 @@ const renderLandingPage = () => `<!doctype html>
       const setStatus = (message, isError = false) => {
         statusEl.textContent = message;
         statusEl.style.color = isError ? '#ff9aa8' : '#b9c8ff';
+      };
+
+      const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+      const registerNode = (node) => {
+        playback.activeNodes.add(node);
+        node.onended = () => playback.activeNodes.delete(node);
+      };
+
+      const stopPlayback = () => {
+        playback.timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
+        playback.timeouts = [];
+
+        for (const node of playback.activeNodes) {
+          try {
+            node.stop();
+          } catch (_error) {
+            // no-op
+          }
+        }
+
+        playback.activeNodes.clear();
+      };
+
+      const ensureContext = async () => {
+        if (!playback.context) {
+          playback.context = new AudioContext();
+        }
+
+        if (playback.context.state === 'suspended') {
+          await playback.context.resume();
+        }
+
+        return playback.context;
+      };
+
+      const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine' }) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, when);
+        gain.gain.setValueAtTime(0.0001, when);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.001, gainAmount), when + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+
+        oscillator.start(when);
+        oscillator.stop(when + Math.max(0.05, duration + 0.08));
+        registerNode(oscillator);
+      };
+
+      const scheduleKick = ({ ctx, when, duration, velocity }) => {
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(140, when);
+        oscillator.frequency.exponentialRampToValueAtTime(45, when + Math.max(0.03, duration));
+
+        gain.gain.setValueAtTime(0.0001, when);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.01, velocity / 130), when + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration));
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(when);
+        oscillator.stop(when + Math.max(0.06, duration + 0.05));
+        registerNode(oscillator);
+      };
+
+      const scheduleNoise = ({ ctx, when, duration, velocity }) => {
+        const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * Math.max(0.03, duration)));
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let index = 0; index < bufferSize; index += 1) {
+          data[index] = Math.random() * 2 - 1;
+        }
+
+        const source = ctx.createBufferSource();
+        const filter = ctx.createBiquadFilter();
+        const gain = ctx.createGain();
+
+        filter.type = 'highpass';
+        filter.frequency.value = 1800;
+
+        gain.gain.setValueAtTime(0.0001, when);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.005, velocity / 250), when + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+
+        source.buffer = buffer;
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+        source.start(when);
+        source.stop(when + Math.max(0.04, duration + 0.02));
+        registerNode(source);
+      };
+
+      const playEvent = ({ ctx, event, startAt, beatLength }) => {
+        const when = startAt + event.beat * beatLength;
+        const duration = Math.max(0.03, event.duration * beatLength);
+        const velocity = Number(event.velocity ?? 80);
+
+        if (['kick'].includes(event.lane)) {
+          scheduleKick({ ctx, when, duration, velocity });
+          return;
+        }
+
+        if (['snare', 'hat', 'openHat', 'perc', 'glitch'].includes(event.lane)) {
+          scheduleNoise({ ctx, when, duration, velocity });
+          return;
+        }
+
+        const laneVoice = {
+          bass: 'sawtooth',
+          chords: 'triangle',
+          melody: 'square',
+          texture: 'sine',
+        };
+
+        const baseGain = {
+          bass: 0.1,
+          chords: 0.08,
+          melody: 0.09,
+          texture: 0.05,
+        };
+
+        scheduleTone({
+          ctx,
+          frequency: midiToFreq(event.midi),
+          when,
+          duration,
+          gainAmount: (baseGain[event.lane] ?? 0.06) * (velocity / 110),
+          type: laneVoice[event.lane] ?? 'sine',
+        });
+      };
+
+      const playProject = async (project) => {
+        if (!project?.tracks || !project?.meta?.bpm) {
+          throw new Error('Generate a project first.');
+        }
+
+        stopPlayback();
+        const ctx = await ensureContext();
+        const beatLength = 60 / project.meta.bpm;
+        const startAt = ctx.currentTime + 0.08;
+
+        const allEvents = Object.values(project.tracks).flat().sort((left, right) => left.beat - right.beat);
+        const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.4);
+
+        allEvents.forEach((event) => {
+          const timeoutId = setTimeout(() => {
+            playEvent({ ctx, event, startAt, beatLength });
+          }, Math.max(0, event.beat * beatLength * 1000));
+
+          playback.timeouts.push(timeoutId);
+        });
+
+        const finishTimeout = setTimeout(() => {
+          setStatus('Playback finished.');
+          stopPlayback();
+        }, totalDurationSeconds * 1000);
+
+        playback.timeouts.push(finishTimeout);
       };
 
       const applyValues = (values) => {
@@ -300,14 +479,29 @@ const renderLandingPage = () => `<!doctype html>
           throw new Error(result.error || 'Generation failed');
         }
 
+        state.currentProject = result.data;
         resultEl.value = JSON.stringify(result.data, null, 2);
         updateCards(result.data);
-        setStatus('Generated successfully.');
+        setStatus('Generated successfully. Click Play Project to audition.');
       };
 
       document.getElementById('loadDefaultsBtn').addEventListener('click', () => {
         applyValues(state.defaults);
         setStatus('Defaults loaded.');
+      });
+
+      playBtn.addEventListener('click', async () => {
+        try {
+          await playProject(state.currentProject);
+          setStatus('Playback started.');
+        } catch (error) {
+          setStatus(error.message || 'Unable to play project.', true);
+        }
+      });
+
+      stopBtn.addEventListener('click', () => {
+        stopPlayback();
+        setStatus('Playback stopped.');
       });
 
       form.addEventListener('submit', async (event) => {

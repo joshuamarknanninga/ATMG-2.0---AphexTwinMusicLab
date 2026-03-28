@@ -31,6 +31,7 @@ test('root and favicon endpoints avoid confusing browser 404s', async () => {
   assert.match(root.body, /<title>ATMG 2\.0 Music Engine<\/title>/);
   assert.match(root.body, /Mouse-friendly music generation UI/);
   assert.match(root.body, /Generate Project/);
+  assert.match(root.body, /Play Project/);
   assert.equal(favicon.statusCode, 204);
 
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

@@ -30,7 +30,7 @@ Server default: `http://localhost:4000`
 ## API
 
 ### `GET /`
-Mouse-friendly HTML UI for setting generator controls and calling `POST /api/music/generate` directly from the browser.
+Mouse-friendly HTML UI for setting generator controls, generating projects, and playing generated JSON as browser audio preview.
 
 ### `GET /health`
 Health check.
