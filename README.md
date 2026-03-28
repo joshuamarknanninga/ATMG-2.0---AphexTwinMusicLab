@@ -29,6 +29,9 @@ Server default: `http://localhost:4000`
 
 ## API
 
+### `GET /`
+Plain-text status landing endpoint for browsers; avoids confusing 404s when visiting localhost directly.
+
 ### `GET /health`
 Health check.
 

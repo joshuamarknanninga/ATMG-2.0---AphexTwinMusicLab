@@ -12,12 +12,46 @@ import { fail, ok, readJsonBody } from './utils/http.js';
 
 const resolveOrigin = (req) => (env.CORS_ORIGIN === '*' ? '*' : req.headers.origin ?? env.CORS_ORIGIN);
 
+const sendText = (res, status, body, origin) => {
+  res.writeHead(status, {
+    'content-type': 'text/plain; charset=utf-8',
+    'access-control-allow-origin': origin,
+    'access-control-allow-headers': 'content-type, authorization',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'x-content-type-options': 'nosniff',
+  });
+  res.end(body);
+};
+
+const sendEmpty = (res, status, origin) => {
+  res.writeHead(status, {
+    'access-control-allow-origin': origin,
+    'access-control-allow-headers': 'content-type, authorization',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'x-content-type-options': 'nosniff',
+  });
+  res.end();
+};
+
 const routeRequest = async (req, res) => {
   const origin = resolveOrigin(req);
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
 
   if (req.method === 'OPTIONS') {
     return ok(res, { allow: ['GET', 'POST', 'OPTIONS'] }, 200, origin);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/') {
+    return sendText(
+      res,
+      200,
+      'ATMG 2.0 music engine is running. Use /health or /api/music/presets to begin.',
+      origin,
+    );
+  }
+
+  if (req.method === 'GET' && url.pathname === '/favicon.ico') {
+    return sendEmpty(res, 204, origin);
   }
 
   if (req.method === 'GET' && url.pathname === '/health') {
