@@ -119,6 +119,10 @@ const renderLandingPage = () => `<!doctype html>
       }
       .toggle-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
       .toggle-row .toggle-text { font-size: 13px; color: #d4deff; }
+      .bank-box { border: 1px solid #324894; border-radius: 10px; padding: 10px; background: #101a3f; display: grid; gap: 8px; }
+      .bank-title { font-size: 12px; text-transform: uppercase; color: #9cb0ff; letter-spacing: .06em; }
+      .analysis-output { border: 1px solid #30458e; border-radius: 10px; padding: 9px; min-height: 72px; background: #0b1433; font-size: 12px; color: #cfdbff; white-space: pre-wrap; }
+      .toggles-grid { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     </style>
   </head>
   <body>
@@ -239,6 +243,30 @@ const renderLandingPage = () => `<!doctype html>
               <div class="full section-title">Pattern Lock + Sync</div>
               <label class="full toggle-row"><input id="lockPatternToggle" type="checkbox" /><span class="toggle-text">Lock Pattern</span></label>
               <div class="full pattern-grid" id="patternGrid"></div>
+
+              <div class="full section-title">Mix Banks + Auto Beat Matching</div>
+              <div class="full bank-box">
+                <div class="bank-title">Bank A</div>
+                <input id="bankAFile" type="file" accept=".mp3,audio/mpeg,audio/mp3,audio/*" />
+                <button class="secondary" type="button" id="analyzeBankABtn">Analyze Bank A</button>
+                <div class="analysis-output" id="bankAAnalysis">No track loaded.</div>
+              </div>
+              <div class="full bank-box">
+                <div class="bank-title">Bank B</div>
+                <input id="bankBFile" type="file" accept=".mp3,audio/mpeg,audio/mp3,audio/*" />
+                <button class="secondary" type="button" id="analyzeBankBBtn">Analyze Bank B</button>
+                <div class="analysis-output" id="bankBAnalysis">No track loaded.</div>
+              </div>
+              <div class="full toggles-grid">
+                <label class="toggle-row"><input id="matchTempoToggle" type="checkbox" checked /><span class="toggle-text">Tempo Match</span></label>
+                <label class="toggle-row"><input id="matchBeatToggle" type="checkbox" checked /><span class="toggle-text">Beat Align</span></label>
+                <label class="toggle-row"><input id="matchPhraseToggle" type="checkbox" checked /><span class="toggle-text">Phrase Match</span></label>
+                <label class="toggle-row"><input id="matchKeyToggle" type="checkbox" checked /><span class="toggle-text">Key Match</span></label>
+                <label class="toggle-row"><input id="matchEqToggle" type="checkbox" checked /><span class="toggle-text">EQ + Frequency Balance</span></label>
+                <label class="toggle-row"><input id="matchEnergyToggle" type="checkbox" checked /><span class="toggle-text">Energy Match</span></label>
+              </div>
+              <button class="full secondary" type="button" id="autoMatchBtn">Auto Match Banks</button>
+              <div class="full analysis-output" id="mixMatchOutput">Load and analyze both banks to build a matching plan.</div>
             </form>
             <p class="status" id="status">Loading presets…</p>
             <p class="fx-note">Effects process the original browser synth signal chain in real-time: filter → distortion → delay + stutter/glitch gate, with reverse-style envelope manipulation for tonal notes.</p>
@@ -281,6 +309,10 @@ const renderLandingPage = () => `<!doctype html>
           snare:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
           hat:  [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
         },
+        banks: {
+          a: { file: null, buffer: null, analysis: null },
+          b: { file: null, buffer: null, analysis: null },
+        },
       };
 
       const playback = {
@@ -315,6 +347,14 @@ const renderLandingPage = () => `<!doctype html>
       const downloadMixBtn = document.getElementById('downloadMixBtn');
       const patternGridEl = document.getElementById('patternGrid');
       const midiStateEl = document.getElementById('midiState');
+      const bankAFileEl = document.getElementById('bankAFile');
+      const bankBFileEl = document.getElementById('bankBFile');
+      const bankAAnalysisEl = document.getElementById('bankAAnalysis');
+      const bankBAnalysisEl = document.getElementById('bankBAnalysis');
+      const analyzeBankABtn = document.getElementById('analyzeBankABtn');
+      const analyzeBankBBtn = document.getElementById('analyzeBankBBtn');
+      const autoMatchBtn = document.getElementById('autoMatchBtn');
+      const mixMatchOutputEl = document.getElementById('mixMatchOutput');
 
       const toOptions = (select, options, selected) => {
         select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
@@ -435,6 +475,168 @@ const renderLandingPage = () => `<!doctype html>
         }
 
         return events;
+      };
+
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+      const estimateTempo = (samples, sampleRate) => {
+        const hop = 1024;
+        const envelope = [];
+        for (let index = 0; index < samples.length - hop; index += hop) {
+          let total = 0;
+          for (let step = 0; step < hop; step += 1) {
+            total += Math.abs(samples[index + step]);
+          }
+          envelope.push(total / hop);
+        }
+
+        if (envelope.length < 32) {
+          return 120;
+        }
+
+        const minLag = Math.floor((60 / 180) * (sampleRate / hop));
+        const maxLag = Math.floor((60 / 70) * (sampleRate / hop));
+        let bestLag = minLag;
+        let bestScore = 0;
+
+        for (let lag = minLag; lag <= maxLag; lag += 1) {
+          let score = 0;
+          for (let i = 0; i < envelope.length - lag; i += 1) {
+            score += envelope[i] * envelope[i + lag];
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestLag = lag;
+          }
+        }
+
+        const beatSeconds = (bestLag * hop) / sampleRate;
+        return Math.max(70, Math.min(180, 60 / beatSeconds));
+      };
+
+      const estimateKey = (samples, sampleRate) => {
+        const window = Math.min(samples.length, sampleRate * 6);
+        let crossings = 0;
+        for (let index = 1; index < window; index += 1) {
+          if ((samples[index - 1] <= 0 && samples[index] > 0) || (samples[index - 1] >= 0 && samples[index] < 0)) {
+            crossings += 1;
+          }
+        }
+        if (!crossings) {
+          return 'Unknown';
+        }
+        const approxHz = (crossings * sampleRate) / (2 * window);
+        const midi = Math.round(69 + 12 * Math.log2(Math.max(1, approxHz) / 440));
+        return noteNames[((midi % 12) + 12) % 12];
+      };
+
+      const analyzeAudioBuffer = (buffer) => {
+        const channel = buffer.getChannelData(0);
+        const sampleRate = buffer.sampleRate;
+        const duration = buffer.duration;
+        const bpm = estimateTempo(channel, sampleRate);
+
+        let rmsTotal = 0;
+        let peak = 0;
+        let peakIndex = 0;
+        let centroidAccumulator = 0;
+        let centroidWeight = 0;
+        const stride = 2048;
+        for (let index = 0; index < channel.length; index += stride) {
+          const value = channel[index];
+          const abs = Math.abs(value);
+          rmsTotal += value * value;
+          if (abs > peak) {
+            peak = abs;
+            peakIndex = index;
+          }
+          centroidAccumulator += abs * index;
+          centroidWeight += abs;
+        }
+
+        const rms = Math.sqrt(rmsTotal / Math.max(1, channel.length));
+        const energy = Math.max(0, Math.min(1, rms * 3.4));
+        const centroidRatio = centroidWeight ? centroidAccumulator / (centroidWeight * channel.length) : 0.5;
+        const centroidHz = Math.round(centroidRatio * (sampleRate / 2));
+        const firstPeakSeconds = peakIndex / sampleRate;
+
+        return {
+          duration,
+          bpm,
+          key: estimateKey(channel, sampleRate),
+          energy,
+          centroidHz,
+          firstPeakSeconds,
+        };
+      };
+
+      const renderBankAnalysis = (analysis) => {
+        if (!analysis) {
+          return 'No analysis available.';
+        }
+        return [
+          'Duration: ' + analysis.duration.toFixed(2) + 's',
+          'Tempo: ' + analysis.bpm.toFixed(2) + ' BPM',
+          'Key: ' + analysis.key,
+          'Energy: ' + analysis.energy.toFixed(3),
+          'Freq centroid: ' + analysis.centroidHz + ' Hz',
+          'First transient: ' + analysis.firstPeakSeconds.toFixed(3) + 's',
+        ].join('\n');
+      };
+
+      const decodeFileToBuffer = async (file) => {
+        const ctx = await ensureContext();
+        const bytes = await file.arrayBuffer();
+        return ctx.decodeAudioData(bytes.slice(0));
+      };
+
+      const analyzeBank = async (bankId) => {
+        const fileEl = bankId === 'a' ? bankAFileEl : bankBFileEl;
+        const outputEl = bankId === 'a' ? bankAAnalysisEl : bankBAnalysisEl;
+        const selectedFile = fileEl.files?.[0];
+
+        if (!selectedFile) {
+          throw new Error('Select an MP3/audio file for Bank ' + bankId.toUpperCase() + ' first.');
+        }
+
+        state.banks[bankId].file = selectedFile;
+        outputEl.textContent = 'Analyzing ' + selectedFile.name + '…';
+        const buffer = await decodeFileToBuffer(selectedFile);
+        const analysis = analyzeAudioBuffer(buffer);
+        state.banks[bankId].buffer = buffer;
+        state.banks[bankId].analysis = analysis;
+        outputEl.textContent = renderBankAnalysis(analysis);
+        return analysis;
+      };
+
+      const collectMatchToggles = () => ({
+        tempo: document.getElementById('matchTempoToggle').checked,
+        beatAlignment: document.getElementById('matchBeatToggle').checked,
+        phrase: document.getElementById('matchPhraseToggle').checked,
+        key: document.getElementById('matchKeyToggle').checked,
+        eq: document.getElementById('matchEqToggle').checked,
+        energy: document.getElementById('matchEnergyToggle').checked,
+      });
+
+      const buildMatchPlan = (a, b, toggles) => {
+        const tempoRatio = b.bpm ? a.bpm / b.bpm : 1;
+        const beatOffsetSec = b.firstPeakSeconds - a.firstPeakSeconds;
+        const beatOffsetBeats = beatOffsetSec / Math.max(0.0001, 60 / a.bpm);
+        const phraseBars = Math.round(beatOffsetBeats / 16);
+        const keyIndexA = noteNames.indexOf(a.key);
+        const keyIndexB = noteNames.indexOf(b.key);
+        const semitoneShift = keyIndexA >= 0 && keyIndexB >= 0 ? ((keyIndexA - keyIndexB + 18) % 12) - 6 : 0;
+        const eqDeltaHz = a.centroidHz - b.centroidHz;
+        const energyDelta = a.energy - b.energy;
+
+        return [
+          toggles.tempo ? 'Tempo match: set Bank B playbackRate to x' + tempoRatio.toFixed(4) + '.' : 'Tempo match: disabled.',
+          toggles.beatAlignment ? 'Beat align: nudge Bank B by ' + beatOffsetSec.toFixed(3) + 's (' + beatOffsetBeats.toFixed(2) + ' beats).' : 'Beat align: disabled.',
+          toggles.phrase ? 'Phrase match: shift phrase start by ' + phraseBars + ' bar(s).' : 'Phrase match: disabled.',
+          toggles.key ? 'Key match: pitch-shift Bank B by ' + semitoneShift + ' semitone(s) toward ' + a.key + '.' : 'Key match: disabled.',
+          toggles.eq ? 'EQ/Frequency balance: move Bank B tonal centroid by ' + eqDeltaHz.toFixed(0) + ' Hz toward Bank A.' : 'EQ/Frequency balance: disabled.',
+          toggles.energy ? 'Energy match: adjust Bank B gain by ' + energyDelta.toFixed(3) + ' (normalized).' : 'Energy match: disabled.',
+        ].join('\n');
       };
 
       const registerNode = (node) => {
@@ -1084,6 +1286,37 @@ const renderLandingPage = () => `<!doctype html>
         }
       });
 
+      analyzeBankABtn.addEventListener('click', async () => {
+        try {
+          await analyzeBank('a');
+          setStatus('Bank A analyzed.');
+        } catch (error) {
+          setStatus(error.message || 'Bank A analysis failed.', true);
+        }
+      });
+
+      analyzeBankBBtn.addEventListener('click', async () => {
+        try {
+          await analyzeBank('b');
+          setStatus('Bank B analyzed.');
+        } catch (error) {
+          setStatus(error.message || 'Bank B analysis failed.', true);
+        }
+      });
+
+      autoMatchBtn.addEventListener('click', () => {
+        const analysisA = state.banks.a.analysis;
+        const analysisB = state.banks.b.analysis;
+        if (!analysisA || !analysisB) {
+          setStatus('Analyze both Bank A and Bank B before auto matching.', true);
+          return;
+        }
+        const toggles = collectMatchToggles();
+        const plan = buildMatchPlan(analysisA, analysisB, toggles);
+        mixMatchOutputEl.textContent = plan;
+        setStatus('Auto match plan generated from both banks.');
+      });
+
       midiBtn.addEventListener('click', async () => {
         try {
           await connectMidi();
@@ -1103,6 +1336,14 @@ const renderLandingPage = () => `<!doctype html>
       });
 
       lockPatternToggleEl.addEventListener('change', lockPatternToggle);
+      bankAFileEl.addEventListener('change', () => {
+        state.banks.a = { file: bankAFileEl.files?.[0] ?? null, buffer: null, analysis: null };
+        bankAAnalysisEl.textContent = state.banks.a.file ? 'Ready to analyze: ' + state.banks.a.file.name : 'No track loaded.';
+      });
+      bankBFileEl.addEventListener('change', () => {
+        state.banks.b = { file: bankBFileEl.files?.[0] ?? null, buffer: null, analysis: null };
+        bankBAnalysisEl.textContent = state.banks.b.file ? 'Ready to analyze: ' + state.banks.b.file.name : 'No track loaded.';
+      });
 
       document.querySelectorAll('[data-pad]').forEach((pad) => {
         pad.addEventListener('click', async () => {

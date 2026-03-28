@@ -130,6 +130,18 @@ All manipulators process the original generated preview signal in-browser throug
 - Added dynamic transport cleanup to stop timers/nodes quickly and avoid runaway resource use.
 - Added a one-click **Download Mix (MP3)** action that records the master output and downloads when playback ends (falls back to browser-supported format if MP3 is unavailable).
 
+### Dual-bank mix analysis and auto beat matching
+
+- Added two blank upload banks (**Bank A** and **Bank B**) for MP3/audio files.
+- Each bank can run independent in-browser analysis (duration, estimated BPM, key, energy, frequency centroid, transient position).
+- Added automatic mix-matching plan generation between banks with individual toggles for:
+  - Tempo matching,
+  - Beat alignment,
+  - Phrase matching,
+  - Key matching,
+  - EQ/frequency balance,
+  - Energy leveling.
+
 ## Research references used
 
 Implementation references used for this update:
