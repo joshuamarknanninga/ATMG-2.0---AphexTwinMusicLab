@@ -1,0 +1,16 @@
+{
+  "name": "aphex-twin-music-lab-server",
+  "version": "1.0.0",
+  "description": "A simple, dependency-free generative music API with deterministic arrangement generation.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test",
+    "lint": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
