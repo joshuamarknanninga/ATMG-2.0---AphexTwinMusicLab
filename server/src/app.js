@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { env } from './config/env.js';
 import { requireSession } from './middleware/auth.js';
 import { createGuestSession } from './routes/auth.routes.js';
+import { exportMidi, exportStems } from './routes/export.routes.js';
 import { generateProject } from './services/generator.js';
 import { getMusicPresets, validateGeneratorRequest } from './routes/music.routes.js';
 import { createProject, getProject, listProjects } from './routes/project.routes.js';
@@ -305,6 +306,10 @@ const renderLandingPage = () => `<!doctype html>
               <a href="/health" target="_blank" rel="noreferrer">GET /health</a>
               <a href="/api/music/presets" target="_blank" rel="noreferrer">GET /api/music/presets</a>
             </div>
+            <div class="actions" style="margin-top:8px;">
+              <button class="secondary" type="button" id="exportMidiBtn">Export MIDI</button>
+              <button class="secondary" type="button" id="exportStemsBtn">Export Stems JSON</button>
+            </div>
             <div style="margin-top:12px; display:grid; gap:8px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
                 <strong>Randomizer Visualizer</strong>
@@ -389,6 +394,8 @@ const renderLandingPage = () => `<!doctype html>
       const generateBtn = document.getElementById('generateBtn');
       const playBtn = document.getElementById('playBtn');
       const stopBtn = document.getElementById('stopBtn');
+      const exportMidiBtn = document.getElementById('exportMidiBtn');
+      const exportStemsBtn = document.getElementById('exportStemsBtn');
       const midiBtn = document.getElementById('midiBtn');
       const syncBtn = document.getElementById('syncBtn');
       const lockPatternToggleEl = document.getElementById('lockPatternToggle');
@@ -1625,6 +1632,22 @@ const renderLandingPage = () => `<!doctype html>
         setStatus('Generated successfully. ' + (result.data.meta.durationMinutes ? 'Length: ' + result.data.meta.durationMinutes.toFixed(2) + ' min. ' : '') + 'Click Play Project to audition.');
       };
 
+      const downloadBlobFromResponse = async ({ response, filename }) => {
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload.error || 'Export failed');
+        }
+        const blob = await response.blob();
+        const href = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = href;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 3000);
+      };
+
       document.getElementById('loadDefaultsBtn').addEventListener('click', () => {
         applyValues(state.defaults);
         setStatus('Defaults loaded.');
@@ -1642,6 +1665,40 @@ const renderLandingPage = () => `<!doctype html>
       stopBtn.addEventListener('click', () => {
         stopPlayback();
         setStatus('Playback stopped.');
+      });
+
+      exportMidiBtn.addEventListener('click', async () => {
+        try {
+          if (!state.currentProject) {
+            throw new Error('Generate a project before exporting.');
+          }
+          const response = await fetch('/api/exports/midi', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ project: state.currentProject }),
+          });
+          await downloadBlobFromResponse({ response, filename: 'atmg-project.mid' });
+          setStatus('MIDI export downloaded.');
+        } catch (error) {
+          setStatus(error.message || 'MIDI export failed.', true);
+        }
+      });
+
+      exportStemsBtn.addEventListener('click', async () => {
+        try {
+          if (!state.currentProject) {
+            throw new Error('Generate a project before exporting stems.');
+          }
+          const response = await fetch('/api/exports/stems', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ project: state.currentProject }),
+          });
+          await downloadBlobFromResponse({ response, filename: 'atmg-stems.json' });
+          setStatus('Stem bundle downloaded.');
+        } catch (error) {
+          setStatus(error.message || 'Stem export failed.', true);
+        }
       });
 
       downloadMixBtn.addEventListener('click', async () => {
@@ -1817,6 +1874,28 @@ const routeRequest = async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/api/music/generate') {
     return ok(res, generateProject(validateGeneratorRequest(await readJsonBody(req))), 200, origin);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/exports/midi') {
+    const midiBytes = exportMidi(await readJsonBody(req));
+    res.writeHead(200, {
+      ...commonHeaders(origin),
+      'content-type': 'audio/midi',
+      'content-disposition': 'attachment; filename="atmg-project.mid"',
+    });
+    res.end(Buffer.from(midiBytes));
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/exports/stems') {
+    const bundle = exportStems(await readJsonBody(req));
+    res.writeHead(200, {
+      ...commonHeaders(origin),
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="atmg-stems.json"',
+    });
+    res.end(JSON.stringify(bundle, null, 2));
+    return;
   }
 
   if (url.pathname === '/api/projects' && req.method === 'GET') {

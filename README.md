@@ -91,6 +91,12 @@ Analyzes symbolic note clips.
 }
 ```
 
+### `POST /api/exports/midi`
+Exports a generated project as a Standard MIDI file (`.mid`).
+
+### `POST /api/exports/stems`
+Exports a symbolic stem bundle (`.json`) with per-lane note data for DAW/manual routing workflows.
+
 ## Design notes
 
 - **Original by design:** the generator targets broad experimental electronic / IDM traits rather than imitating any specific artist.
