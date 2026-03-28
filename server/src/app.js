@@ -305,10 +305,25 @@ const renderLandingPage = () => `<!doctype html>
               <a href="/health" target="_blank" rel="noreferrer">GET /health</a>
               <a href="/api/music/presets" target="_blank" rel="noreferrer">GET /api/music/presets</a>
             </div>
-            <label style="margin-top:12px; display:grid; gap:8px;">
-              Generated project JSON
-              <textarea id="result" readonly>{\n  "hint": "Generate a project to see output here."\n}</textarea>
-            </label>
+            <div style="margin-top:12px; display:grid; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                <strong>Randomizer Visualizer</strong>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <select id="visMode">
+                    <option value="prism">Prism</option>
+                    <option value="orbit">Orbit</option>
+                    <option value="pulse">Pulse</option>
+                  </select>
+                  <button class="secondary" type="button" id="visRandomizeBtn">Randomize Visuals</button>
+                </div>
+              </div>
+              <canvas id="visCanvas" width="900" height="320" style="width:100%; height:320px; border:1px solid #2f468f; border-radius:10px; background:#070b1d;"></canvas>
+              <div class="muted" id="visMeta">Visualizer idle. Generate and play to drive audio-reactive motion.</div>
+              <details>
+                <summary class="muted">Generated project JSON (debug)</summary>
+                <textarea id="result" readonly>{\n  "hint": "Generate a project to see output here."\n}</textarea>
+              </details>
+            </div>
           </div>
         </section>
       </div>
@@ -357,11 +372,17 @@ const renderLandingPage = () => `<!doctype html>
         recordingNode: null,
         recordingSilence: null,
         pcmWorkletReady: false,
+        visualizerRaf: null,
+        analyser: null,
       };
 
       const form = document.getElementById('generatorForm');
       const statusEl = document.getElementById('status');
       const resultEl = document.getElementById('result');
+      const visCanvasEl = document.getElementById('visCanvas');
+      const visModeEl = document.getElementById('visMode');
+      const visRandomizeBtn = document.getElementById('visRandomizeBtn');
+      const visMetaEl = document.getElementById('visMeta');
       const presetEl = document.getElementById('preset');
       const moodEl = document.getElementById('mood');
       const scaleEl = document.getElementById('scale');
@@ -383,6 +404,11 @@ const renderLandingPage = () => `<!doctype html>
       const analyzeBankBBtn = document.getElementById('analyzeBankBBtn');
       const autoMatchBtn = document.getElementById('autoMatchBtn');
       const mixMatchOutputEl = document.getElementById('mixMatchOutput');
+      const visState = {
+        hueBase: Math.random() * 360,
+        speed: 0.6 + Math.random() * 1.2,
+        bloom: 0.4 + Math.random() * 0.6,
+      };
 
       const toOptions = (select, options, selected) => {
         select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
@@ -414,6 +440,95 @@ const renderLandingPage = () => `<!doctype html>
       const setStatus = (message, isError = false) => {
         statusEl.textContent = message;
         statusEl.style.color = isError ? '#ff9aa8' : '#b9c8ff';
+      };
+
+      const randomizeVisualizer = () => {
+        visState.hueBase = Math.random() * 360;
+        visState.speed = 0.5 + Math.random() * 1.4;
+        visState.bloom = 0.3 + Math.random() * 0.8;
+        visMetaEl.textContent = 'Visualizer randomized: hue ' + Math.round(visState.hueBase) + ', speed ' + visState.speed.toFixed(2) + '.';
+      };
+
+      const drawVisualizer = () => {
+        const ctx2d = visCanvasEl.getContext('2d');
+        if (!ctx2d) {
+          return;
+        }
+        const width = visCanvasEl.width;
+        const height = visCanvasEl.height;
+        const mode = visModeEl.value;
+        const analyser = playback.analyser;
+
+        if (!analyser) {
+          ctx2d.fillStyle = '#050918';
+          ctx2d.fillRect(0, 0, width, height);
+          return;
+        }
+
+        const bins = analyser.frequencyBinCount;
+        const freqData = new Uint8Array(bins);
+        analyser.getByteFrequencyData(freqData);
+
+        ctx2d.fillStyle = 'rgba(5,9,24,0.18)';
+        ctx2d.fillRect(0, 0, width, height);
+
+        const avg = freqData.reduce((sum, value) => sum + value, 0) / Math.max(1, freqData.length);
+        const bass = freqData.slice(0, Math.floor(freqData.length * 0.08)).reduce((sum, value) => sum + value, 0) / Math.max(1, Math.floor(freqData.length * 0.08));
+        const t = performance.now() * 0.001 * visState.speed;
+
+        if (mode === 'prism') {
+          const bars = 96;
+          const step = width / bars;
+          for (let i = 0; i < bars; i += 1) {
+            const bin = Math.floor((i / bars) * freqData.length);
+            const magnitude = freqData[bin] / 255;
+            const barHeight = Math.max(2, magnitude * height * (0.25 + visState.bloom));
+            ctx2d.fillStyle = 'hsla(' + ((visState.hueBase + i * 2.1 + t * 45) % 360) + ', 85%, 62%, 0.82)';
+            ctx2d.fillRect(i * step, height - barHeight, step - 1, barHeight);
+          }
+        } else if (mode === 'orbit') {
+          const cx = width / 2;
+          const cy = height / 2;
+          const rings = 40;
+          for (let i = 0; i < rings; i += 1) {
+            const bin = Math.floor((i / rings) * freqData.length);
+            const energy = freqData[bin] / 255;
+            const radius = 30 + i * 4 + energy * 36;
+            const angle = t + i * 0.22;
+            const x = cx + Math.cos(angle) * radius;
+            const y = cy + Math.sin(angle * 1.2) * radius * 0.55;
+            ctx2d.beginPath();
+            ctx2d.fillStyle = 'hsla(' + ((visState.hueBase + i * 6 + t * 30) % 360) + ', 90%, 60%, 0.6)';
+            ctx2d.arc(x, y, 2 + energy * 6, 0, Math.PI * 2);
+            ctx2d.fill();
+          }
+        } else {
+          const cx = width / 2;
+          const cy = height / 2;
+          const petals = 72;
+          for (let i = 0; i < petals; i += 1) {
+            const bin = Math.floor((i / petals) * freqData.length);
+            const energy = freqData[bin] / 255;
+            const angle = (i / petals) * Math.PI * 2 + t * 0.8;
+            const length = 20 + energy * 180 * visState.bloom;
+            ctx2d.strokeStyle = 'hsla(' + ((visState.hueBase + i * 3.5 + t * 25) % 360) + ', 95%, 64%, 0.7)';
+            ctx2d.lineWidth = 1 + energy * 3;
+            ctx2d.beginPath();
+            ctx2d.moveTo(cx + Math.cos(angle) * 12, cy + Math.sin(angle) * 12);
+            ctx2d.lineTo(cx + Math.cos(angle) * (12 + length), cy + Math.sin(angle) * (12 + length));
+            ctx2d.stroke();
+          }
+        }
+
+        visMetaEl.textContent = 'Mode: ' + mode + ' • Avg energy: ' + avg.toFixed(1) + ' • Bass: ' + bass.toFixed(1);
+        playback.visualizerRaf = requestAnimationFrame(drawVisualizer);
+      };
+
+      const startVisualizer = () => {
+        if (playback.visualizerRaf) {
+          cancelAnimationFrame(playback.visualizerRaf);
+        }
+        drawVisualizer();
       };
 
       const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
@@ -732,6 +847,7 @@ const renderLandingPage = () => `<!doctype html>
         const dry = ctx.createGain();
         const wet = ctx.createGain();
         const stutterGate = ctx.createGain();
+        const analyser = ctx.createAnalyser();
         const output = ctx.createGain();
         const streamDestination = ctx.createMediaStreamDestination();
 
@@ -763,10 +879,13 @@ const renderLandingPage = () => `<!doctype html>
         dry.connect(stutterGate);
         wet.connect(stutterGate);
         stutterGate.connect(output);
+        output.connect(analyser);
         output.connect(ctx.destination);
         output.connect(streamDestination);
 
-        return { input, filter, shaper, delay, delayFeedback, delayTone, dry, wet, stutterGate, output, streamDestination };
+        analyser.fftSize = 2048;
+
+        return { input, filter, shaper, delay, delayFeedback, delayTone, dry, wet, stutterGate, analyser, output, streamDestination };
       };
 
       const clearFxTimers = () => {
@@ -830,12 +949,18 @@ const renderLandingPage = () => `<!doctype html>
           }
           playback.recordingSilence = null;
         }
+
+        if (playback.visualizerRaf) {
+          cancelAnimationFrame(playback.visualizerRaf);
+          playback.visualizerRaf = null;
+        }
       };
 
       const ensureContext = async () => {
         if (!playback.context) {
           playback.context = new AudioContext();
           playback.chain = createChain(playback.context);
+          playback.analyser = playback.chain.analyser;
         }
 
         if (playback.context.state === 'suspended') {
@@ -943,9 +1068,12 @@ const renderLandingPage = () => `<!doctype html>
 
       const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine', reverseMix = 0 }) => {
         const oscillator = ctx.createOscillator();
+        const unisonOsc = ctx.createOscillator();
         const gain = ctx.createGain();
         oscillator.type = type;
+        unisonOsc.type = type === 'sine' ? 'triangle' : type;
         oscillator.frequency.setValueAtTime(frequency, when);
+        unisonOsc.frequency.setValueAtTime(frequency * 1.0035, when);
 
         if (reverseMix > 0.35 && Math.random() < reverseMix) {
           gain.gain.setValueAtTime(0.0001, when);
@@ -958,11 +1086,15 @@ const renderLandingPage = () => `<!doctype html>
         }
 
         oscillator.connect(gain);
+        unisonOsc.connect(gain);
         gain.connect(playback.chain.input);
 
         oscillator.start(when);
+        unisonOsc.start(when + 0.0006);
         oscillator.stop(when + Math.max(0.05, duration + 0.08));
+        unisonOsc.stop(when + Math.max(0.05, duration + 0.09));
         registerNode(oscillator);
+        registerNode(unisonOsc);
       };
 
       const scheduleKick = ({ ctx, when, duration, velocity }) => {
@@ -1272,6 +1404,7 @@ const renderLandingPage = () => `<!doctype html>
         const ctx = await ensureContext();
         const fxSettings = getFxSettings();
         applyFxSettings(ctx, fxSettings);
+        startVisualizer();
 
         const beatLength = 60 / project.meta.bpm;
         const startAt = ctx.currentTime + 0.08;
@@ -1579,6 +1712,8 @@ const renderLandingPage = () => `<!doctype html>
         state.banks.b = { file: bankBFileEl.files?.[0] ?? null, buffer: null, analysis: null };
         bankBAnalysisEl.textContent = state.banks.b.file ? 'Ready to analyze: ' + state.banks.b.file.name : 'No track loaded.';
       });
+      visRandomizeBtn.addEventListener('click', randomizeVisualizer);
+      visModeEl.addEventListener('change', startVisualizer);
 
       document.querySelectorAll('[data-pad]').forEach((pad) => {
         pad.addEventListener('click', async () => {
@@ -1629,6 +1764,7 @@ const renderLandingPage = () => `<!doctype html>
       lockPatternToggleEl.checked = state.lockDrumPattern;
       applyDrumPreset(drumPresetSelectEl.value);
       renderPatternGrid();
+      startVisualizer();
 
       loadPresets().catch((error) => {
         setStatus(error.message || 'Failed to initialize UI.', true);

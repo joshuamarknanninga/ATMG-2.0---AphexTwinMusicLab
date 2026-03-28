@@ -180,6 +180,16 @@ All manipulators process the original generated preview signal in-browser throug
 - **Browser-native performance DSP**: AudioWorklet + WebAssembly DSP pipelines for lower-latency, richer synthesis and custom processors.
   - https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet
 
+### Randomizer visualizer (Synesthesia-style feasibility)
+
+- Replaced the always-visible JSON HUD in the output panel with a **Randomizer Visualizer** canvas (Prism / Orbit / Pulse modes) driven by live audio FFT energy data.
+- Added **Randomize Visuals** to mutate hue/speed/bloom parameters in real time.
+- Kept generated JSON available under a debug `<details>` panel so diagnostics remain accessible.
+
+Research references supporting feasibility:
+- Web Audio frequency-domain analysis with `AnalyserNode`: https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode
+- Synesthesia-style live music visualization concept: https://synesthesia.live/
+
 ## Research references used
 
 Implementation references used for this update:
