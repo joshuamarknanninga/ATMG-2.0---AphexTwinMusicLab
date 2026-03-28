@@ -296,6 +296,7 @@ const renderLandingPage = () => `<!doctype html>
       </div>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <script>
       const state = {
         defaults: null,
@@ -327,9 +328,9 @@ const renderLandingPage = () => `<!doctype html>
         schedulerTimer: null,
         playbackEndTimer: null,
         tapeDelayTimer: null,
-        recorder: null,
         recordingChunks: [],
-        recordingMimeType: '',
+        recordingProcessor: null,
+        recordingSilence: null,
       };
 
       const form = document.getElementById('generatorForm');
@@ -748,8 +749,23 @@ const renderLandingPage = () => `<!doctype html>
           playback.chain.stutterGate.gain.setValueAtTime(1, playback.context.currentTime);
         }
 
-        if (playback.recorder && playback.recorder.state !== 'inactive') {
-          playback.recorder.stop();
+        if (playback.recordingProcessor) {
+          try {
+            playback.recordingProcessor.disconnect();
+          } catch (_error) {
+            // no-op
+          }
+          playback.recordingProcessor.onaudioprocess = null;
+          playback.recordingProcessor = null;
+        }
+
+        if (playback.recordingSilence) {
+          try {
+            playback.recordingSilence.disconnect();
+          } catch (_error) {
+            // no-op
+          }
+          playback.recordingSilence = null;
         }
       };
 
@@ -977,16 +993,91 @@ const renderLandingPage = () => `<!doctype html>
         });
       };
 
-      const stopRecordingIfNeeded = () =>
-        new Promise((resolve) => {
-          if (!playback.recorder || playback.recorder.state === 'inactive') {
-            resolve();
-            return;
-          }
-          const recorder = playback.recorder;
-          recorder.addEventListener('stop', () => resolve(), { once: true });
-          recorder.stop();
+      const mergeFloatChunks = (chunks) => {
+        const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const merged = new Float32Array(length);
+        let cursor = 0;
+        chunks.forEach((chunk) => {
+          merged.set(chunk, cursor);
+          cursor += chunk.length;
         });
+        return merged;
+      };
+
+      const floatToInt16 = (input) => {
+        const output = new Int16Array(input.length);
+        for (let index = 0; index < input.length; index += 1) {
+          const sample = Math.max(-1, Math.min(1, input[index]));
+          output[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+        }
+        return output;
+      };
+
+      const startMp3Capture = (ctx) => {
+        if (!playback.chain?.output) {
+          throw new Error('Audio output chain is not ready for recording.');
+        }
+
+        playback.recordingChunks = [];
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        const silence = ctx.createGain();
+        silence.gain.value = 0;
+
+        processor.onaudioprocess = (event) => {
+          const channel = event.inputBuffer.getChannelData(0);
+          playback.recordingChunks.push(new Float32Array(channel));
+        };
+
+        playback.chain.output.connect(processor);
+        processor.connect(silence);
+        silence.connect(ctx.destination);
+
+        playback.recordingProcessor = processor;
+        playback.recordingSilence = silence;
+      };
+
+      const finishMp3CaptureAndDownload = (sampleRate) => {
+        if (!playback.recordingChunks.length) {
+          setStatus('No audio captured for export.', true);
+          return;
+        }
+
+        if (!window.lamejs || typeof window.lamejs.Mp3Encoder !== 'function') {
+          setStatus('MP3 encoder unavailable. Check network and try again.', true);
+          return;
+        }
+
+        const merged = mergeFloatChunks(playback.recordingChunks);
+        const pcm16 = floatToInt16(merged);
+        const encoder = new window.lamejs.Mp3Encoder(1, sampleRate, 192);
+        const mp3Chunks = [];
+        const blockSize = 1152;
+
+        for (let index = 0; index < pcm16.length; index += blockSize) {
+          const chunk = pcm16.subarray(index, index + blockSize);
+          const encoded = encoder.encodeBuffer(chunk);
+          if (encoded.length) {
+            mp3Chunks.push(new Uint8Array(encoded));
+          }
+        }
+
+        const finalChunk = encoder.flush();
+        if (finalChunk.length) {
+          mp3Chunks.push(new Uint8Array(finalChunk));
+        }
+
+        const blob = new Blob(mp3Chunks, { type: 'audio/mpeg' });
+        const href = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = 'atmg-mix-' + Date.now() + '.mp3';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 4000);
+        playback.recordingChunks = [];
+        setStatus('Mix downloaded as MP3 (iTunes compatible).');
+      };
 
       const playProject = async (project, options = {}) => {
         if (!project?.tracks || !project?.meta?.bpm) {
@@ -994,7 +1085,6 @@ const renderLandingPage = () => `<!doctype html>
         }
 
         stopPlayback();
-        await stopRecordingIfNeeded();
         const ctx = await ensureContext();
         const fxSettings = getFxSettings();
         applyFxSettings(ctx, fxSettings);
@@ -1029,58 +1119,16 @@ const renderLandingPage = () => `<!doctype html>
 
         const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.6);
         playback.playbackEndTimer = setTimeout(() => {
-          if (!options.record) {
+          if (options.record) {
+            finishMp3CaptureAndDownload(ctx.sampleRate);
+          } else {
             setStatus('Playback finished.');
           }
           stopPlayback();
         }, totalDurationSeconds * 1000);
 
         if (options.record) {
-          if (typeof MediaRecorder === 'undefined') {
-            stopPlayback();
-            throw new Error('MediaRecorder is not supported in this browser.');
-          }
-
-          const stream = playback.chain?.streamDestination?.stream;
-          if (!stream) {
-            stopPlayback();
-            throw new Error('Unable to capture audio stream for export.');
-          }
-
-          const preferredTypes = ['audio/mpeg', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
-          const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
-          const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-          playback.recorder = recorder;
-          playback.recordingChunks = [];
-          playback.recordingMimeType = recorder.mimeType || mimeType || 'audio/webm';
-
-          recorder.addEventListener('dataavailable', (event) => {
-            if (event.data?.size) {
-              playback.recordingChunks.push(event.data);
-            }
-          });
-
-          recorder.addEventListener('stop', () => {
-            if (!playback.recordingChunks.length) {
-              return;
-            }
-            const mime = playback.recordingMimeType || 'audio/webm';
-            const isMpeg = mime.includes('mpeg') || mime.includes('mp4');
-            const ext = isMpeg ? 'mp3' : 'webm';
-            const blob = new Blob(playback.recordingChunks, { type: mime });
-            const href = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = href;
-            a.download = 'atmg-mix-' + Date.now() + '.' + ext;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(() => URL.revokeObjectURL(href), 4000);
-            setStatus(isMpeg ? 'Mix downloaded as MP3.' : 'Mix downloaded (browser export format; MP3 not supported by this browser).');
-            playback.recordingChunks = [];
-          }, { once: true });
-
-          recorder.start(200);
+          startMp3Capture(ctx);
         }
       };
 
