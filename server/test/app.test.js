@@ -37,6 +37,8 @@ test('root and favicon endpoints avoid confusing browser 404s', async () => {
   assert.match(root.body, /Drum Machine Pads/);
   assert.match(root.body, /Lock Pattern/);
   assert.match(root.body, /Sync Play/);
+  assert.match(root.body, /Tape Delay/);
+  assert.match(root.body, /Download Mix \(MP3\)/);
   assert.equal(favicon.statusCode, 204);
 
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

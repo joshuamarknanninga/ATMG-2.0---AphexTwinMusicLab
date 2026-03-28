@@ -107,6 +107,18 @@ const renderLandingPage = () => `<!doctype html>
       .pattern-cell { min-height: 26px; padding: 0; background: #0f1d46; border: 1px solid #3553b3; border-radius: 6px; }
       .pattern-cell.active { background: #4f6fff; }
       .pattern-label { font-size: 12px; color: #9eb1f8; }
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 42px;
+        border: 1px solid #3b4f9f;
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: #0d1638;
+      }
+      .toggle-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0; }
+      .toggle-row .toggle-text { font-size: 13px; color: #d4deff; }
     </style>
   </head>
   <body>
@@ -203,12 +215,8 @@ const renderLandingPage = () => `<!doctype html>
               <label>Richness
                 <input id="fxRichness" type="number" min="0" max="1" step="0.01" value="0.55" />
               </label>
-              <label>CPU Saver
-                <select id="fxCpuSaver">
-                  <option value="off">Off</option>
-                  <option value="on">On</option>
-                </select>
-              </label>
+              <label class="toggle-row"><input id="fxTapeDelay" type="checkbox" /><span class="toggle-text">Tape Delay</span></label>
+              <label class="toggle-row"><input id="fxCpuSaver" type="checkbox" /><span class="toggle-text">CPU Saver</span></label>
 
               <div class="full section-title">Transport + Controllers</div>
               <div class="full actions">
@@ -216,6 +224,7 @@ const renderLandingPage = () => `<!doctype html>
                 <button class="secondary" type="button" id="loadDefaultsBtn">Load Defaults</button>
                 <button class="secondary" type="button" id="playBtn">Play Project</button>
                 <button class="secondary" type="button" id="stopBtn">Stop</button>
+                <button class="secondary" type="button" id="downloadMixBtn">Download Mix (MP3)</button>
                 <button class="secondary" type="button" id="midiBtn">Connect MIDI</button>
                 <button class="secondary" type="button" id="syncBtn">Sync Play</button>
               </div>
@@ -228,9 +237,7 @@ const renderLandingPage = () => `<!doctype html>
                 <button class="pad" type="button" data-pad="hat">Hat</button>
               </div>
               <div class="full section-title">Pattern Lock + Sync</div>
-              <div class="full actions">
-                <button class="secondary" type="button" id="lockPatternBtn">Lock Pattern: Off</button>
-              </div>
+              <label class="full toggle-row"><input id="lockPatternToggle" type="checkbox" /><span class="toggle-text">Lock Pattern</span></label>
               <div class="full pattern-grid" id="patternGrid"></div>
             </form>
             <p class="status" id="status">Loading presets…</p>
@@ -287,6 +294,10 @@ const renderLandingPage = () => `<!doctype html>
         chain: null,
         schedulerTimer: null,
         playbackEndTimer: null,
+        tapeDelayTimer: null,
+        recorder: null,
+        recordingChunks: [],
+        recordingMimeType: '',
       };
 
       const form = document.getElementById('generatorForm');
@@ -300,7 +311,8 @@ const renderLandingPage = () => `<!doctype html>
       const stopBtn = document.getElementById('stopBtn');
       const midiBtn = document.getElementById('midiBtn');
       const syncBtn = document.getElementById('syncBtn');
-      const lockPatternBtn = document.getElementById('lockPatternBtn');
+      const lockPatternToggleEl = document.getElementById('lockPatternToggle');
+      const downloadMixBtn = document.getElementById('downloadMixBtn');
       const patternGridEl = document.getElementById('patternGrid');
       const midiStateEl = document.getElementById('midiState');
 
@@ -394,8 +406,7 @@ const renderLandingPage = () => `<!doctype html>
       };
 
       const lockPatternToggle = () => {
-        state.lockDrumPattern = !state.lockDrumPattern;
-        lockPatternBtn.textContent = 'Lock Pattern: ' + (state.lockDrumPattern ? 'On' : 'Off');
+        state.lockDrumPattern = lockPatternToggleEl.checked;
         setStatus(state.lockDrumPattern ? 'Pattern locked and ready to sync.' : 'Pattern unlocked.');
       };
 
@@ -450,10 +461,12 @@ const renderLandingPage = () => `<!doctype html>
         const shaper = ctx.createWaveShaper();
         const delay = ctx.createDelay(1.2);
         const delayFeedback = ctx.createGain();
+        const delayTone = ctx.createBiquadFilter();
         const dry = ctx.createGain();
         const wet = ctx.createGain();
         const stutterGate = ctx.createGain();
         const output = ctx.createGain();
+        const streamDestination = ctx.createMediaStreamDestination();
 
         filter.type = 'lowpass';
         filter.frequency.value = 1800;
@@ -464,6 +477,8 @@ const renderLandingPage = () => `<!doctype html>
 
         delay.delayTime.value = 0.28;
         delayFeedback.gain.value = 0.32;
+        delayTone.type = 'lowpass';
+        delayTone.frequency.value = 18000;
         dry.gain.value = 0.76;
         wet.gain.value = 0.24;
         stutterGate.gain.value = 1;
@@ -472,7 +487,8 @@ const renderLandingPage = () => `<!doctype html>
         input.connect(filter);
         filter.connect(shaper);
         shaper.connect(dry);
-        shaper.connect(delay);
+        shaper.connect(delayTone);
+        delayTone.connect(delay);
         delay.connect(delayFeedback);
         delayFeedback.connect(delay);
         delay.connect(wet);
@@ -481,8 +497,9 @@ const renderLandingPage = () => `<!doctype html>
         wet.connect(stutterGate);
         stutterGate.connect(output);
         output.connect(ctx.destination);
+        output.connect(streamDestination);
 
-        return { input, filter, shaper, delay, delayFeedback, dry, wet, stutterGate, output };
+        return { input, filter, shaper, delay, delayFeedback, delayTone, dry, wet, stutterGate, output, streamDestination };
       };
 
       const clearFxTimers = () => {
@@ -493,6 +510,10 @@ const renderLandingPage = () => `<!doctype html>
         if (playback.glitchTimer) {
           clearInterval(playback.glitchTimer);
           playback.glitchTimer = null;
+        }
+        if (playback.tapeDelayTimer) {
+          clearInterval(playback.tapeDelayTimer);
+          playback.tapeDelayTimer = null;
         }
       };
 
@@ -524,6 +545,10 @@ const renderLandingPage = () => `<!doctype html>
         if (playback.chain?.stutterGate && playback.context) {
           playback.chain.stutterGate.gain.setValueAtTime(1, playback.context.currentTime);
         }
+
+        if (playback.recorder && playback.recorder.state !== 'inactive') {
+          playback.recorder.stop();
+        }
       };
 
       const ensureContext = async () => {
@@ -552,7 +577,8 @@ const renderLandingPage = () => `<!doctype html>
         glitchChance: Number(document.getElementById('fxGlitchChance').value),
         reverseMix: Number(document.getElementById('fxReverseMix').value),
         richness: Number(document.getElementById('fxRichness').value),
-        cpuSaver: document.getElementById('fxCpuSaver').value === 'on',
+        cpuSaver: document.getElementById('fxCpuSaver').checked,
+        tapeDelay: document.getElementById('fxTapeDelay').checked,
       });
 
       const applyFxSettings = (ctx, settings) => {
@@ -571,6 +597,14 @@ const renderLandingPage = () => `<!doctype html>
         const wet = Math.max(0, Math.min(1, settings.delayMix));
         chain.wet.gain.setTargetAtTime(wet, ctx.currentTime, 0.02);
         chain.dry.gain.setTargetAtTime(1 - wet, ctx.currentTime, 0.02);
+        const tapeOn = Boolean(settings.tapeDelay);
+        chain.delayTone.frequency.setTargetAtTime(tapeOn ? 2600 : 18000, ctx.currentTime, 0.03);
+        chain.delayFeedback.gain.setTargetAtTime(
+          Math.max(0, Math.min(0.95, settings.delayFeedback + (tapeOn ? 0.08 : 0))),
+          ctx.currentTime,
+          0.03,
+        );
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(1, settings.drive + (tapeOn ? 0.04 : 0))));
 
         const richness = Math.max(0, Math.min(1, settings.richness ?? 0.55));
         chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7, ctx.currentTime, 0.02);
@@ -602,6 +636,20 @@ const renderLandingPage = () => `<!doctype html>
             }
           }, 45 + Math.random() * 80);
         }, 90);
+
+        if (tapeOn) {
+          playback.tapeDelayTimer = setInterval(() => {
+            if (!playback.chain) {
+              return;
+            }
+            const jitter = (Math.random() - 0.5) * 0.012;
+            playback.chain.delay.delayTime.setTargetAtTime(
+              Math.max(0, Math.min(1.2, settings.delayTime + jitter)),
+              ctx.currentTime,
+              0.08,
+            );
+          }, 180);
+        }
       };
 
       const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine', reverseMix = 0 }) => {
@@ -727,12 +775,24 @@ const renderLandingPage = () => `<!doctype html>
         });
       };
 
-      const playProject = async (project) => {
+      const stopRecordingIfNeeded = () =>
+        new Promise((resolve) => {
+          if (!playback.recorder || playback.recorder.state === 'inactive') {
+            resolve();
+            return;
+          }
+          const recorder = playback.recorder;
+          recorder.addEventListener('stop', () => resolve(), { once: true });
+          recorder.stop();
+        });
+
+      const playProject = async (project, options = {}) => {
         if (!project?.tracks || !project?.meta?.bpm) {
           throw new Error('Generate a project first.');
         }
 
         stopPlayback();
+        await stopRecordingIfNeeded();
         const ctx = await ensureContext();
         const fxSettings = getFxSettings();
         applyFxSettings(ctx, fxSettings);
@@ -767,9 +827,59 @@ const renderLandingPage = () => `<!doctype html>
 
         const totalDurationSeconds = Math.max(1, (project.meta.bars ?? 8) * 4 * beatLength + 0.6);
         playback.playbackEndTimer = setTimeout(() => {
-          setStatus('Playback finished.');
+          if (!options.record) {
+            setStatus('Playback finished.');
+          }
           stopPlayback();
         }, totalDurationSeconds * 1000);
+
+        if (options.record) {
+          if (typeof MediaRecorder === 'undefined') {
+            stopPlayback();
+            throw new Error('MediaRecorder is not supported in this browser.');
+          }
+
+          const stream = playback.chain?.streamDestination?.stream;
+          if (!stream) {
+            stopPlayback();
+            throw new Error('Unable to capture audio stream for export.');
+          }
+
+          const preferredTypes = ['audio/mpeg', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+          const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
+          const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+          playback.recorder = recorder;
+          playback.recordingChunks = [];
+          playback.recordingMimeType = recorder.mimeType || mimeType || 'audio/webm';
+
+          recorder.addEventListener('dataavailable', (event) => {
+            if (event.data?.size) {
+              playback.recordingChunks.push(event.data);
+            }
+          });
+
+          recorder.addEventListener('stop', () => {
+            if (!playback.recordingChunks.length) {
+              return;
+            }
+            const mime = playback.recordingMimeType || 'audio/webm';
+            const isMpeg = mime.includes('mpeg') || mime.includes('mp4');
+            const ext = isMpeg ? 'mp3' : 'webm';
+            const blob = new Blob(playback.recordingChunks, { type: mime });
+            const href = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = 'atmg-mix-' + Date.now() + '.' + ext;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(href), 4000);
+            setStatus(isMpeg ? 'Mix downloaded as MP3.' : 'Mix downloaded (browser export format; MP3 not supported by this browser).');
+            playback.recordingChunks = [];
+          }, { once: true });
+
+          recorder.start(200);
+        }
       };
 
       const triggerPad = async (padName) => {
@@ -845,6 +955,17 @@ const renderLandingPage = () => `<!doctype html>
           }
           input.value = String(value);
         });
+
+        if ('fxCpuSaver' in values) {
+          document.getElementById('fxCpuSaver').checked = values.fxCpuSaver === true || values.fxCpuSaver === 'on';
+        }
+        if ('fxTapeDelay' in values) {
+          document.getElementById('fxTapeDelay').checked = values.fxTapeDelay === true || values.fxTapeDelay === 'on';
+        }
+        if ('lockPatternToggle' in values) {
+          lockPatternToggleEl.checked = values.lockPatternToggle === true || values.lockPatternToggle === 'on';
+          state.lockDrumPattern = lockPatternToggleEl.checked;
+        }
 
         if (values.preset && state.presets.includes(values.preset)) {
           presetEl.value = values.preset;
@@ -954,6 +1075,15 @@ const renderLandingPage = () => `<!doctype html>
         setStatus('Playback stopped.');
       });
 
+      downloadMixBtn.addEventListener('click', async () => {
+        try {
+          await playProject(state.currentProject, { record: true });
+          setStatus('Rendering + recording mix… download begins automatically when playback ends.');
+        } catch (error) {
+          setStatus(error.message || 'Unable to export mix.', true);
+        }
+      });
+
       midiBtn.addEventListener('click', async () => {
         try {
           await connectMidi();
@@ -972,7 +1102,7 @@ const renderLandingPage = () => `<!doctype html>
         }
       });
 
-      lockPatternBtn.addEventListener('click', lockPatternToggle);
+      lockPatternToggleEl.addEventListener('change', lockPatternToggle);
 
       document.querySelectorAll('[data-pad]').forEach((pad) => {
         pad.addEventListener('click', async () => {
@@ -997,6 +1127,7 @@ const renderLandingPage = () => `<!doctype html>
       });
 
       enhanceStepButtons();
+      lockPatternToggleEl.checked = state.lockDrumPattern;
       renderPatternGrid();
 
       loadPresets().catch((error) => {
