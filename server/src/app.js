@@ -200,25 +200,25 @@ const renderLandingPage = () => `<!doctype html>
                 </select>
               </label>
               <label>Filter Cutoff (Hz)
-                <input id="fxFilterCutoff" type="number" min="80" max="12000" step="10" value="1800" />
+                <input id="fxFilterCutoff" type="number" min="20" max="20000" step="10" value="1800" />
               </label>
               <label>Filter Resonance (Q)
-                <input id="fxFilterQ" type="number" min="0.1" max="20" step="0.1" value="1.2" />
+                <input id="fxFilterQ" type="number" min="0.1" max="30" step="0.1" value="1.2" />
               </label>
               <label>Distortion Drive
-                <input id="fxDrive" type="number" min="0" max="1" step="0.01" value="0.2" />
+                <input id="fxDrive" type="number" min="0" max="2" step="0.01" value="0.2" />
               </label>
               <label>Delay Time (s)
-                <input id="fxDelayTime" type="number" min="0" max="1.2" step="0.01" value="0.28" />
+                <input id="fxDelayTime" type="number" min="0" max="2.5" step="0.01" value="0.28" />
               </label>
               <label>Delay Feedback
-                <input id="fxDelayFeedback" type="number" min="0" max="0.95" step="0.01" value="0.32" />
+                <input id="fxDelayFeedback" type="number" min="0" max="0.99" step="0.01" value="0.32" />
               </label>
               <label>Delay Mix
                 <input id="fxDelayMix" type="number" min="0" max="1" step="0.01" value="0.24" />
               </label>
               <label>Stutter Rate (Hz)
-                <input id="fxStutterRate" type="number" min="1" max="24" step="0.1" value="8" />
+                <input id="fxStutterRate" type="number" min="0.5" max="40" step="0.1" value="8" />
               </label>
               <label>Stutter Depth
                 <input id="fxStutterDepth" type="number" min="0" max="1" step="0.01" value="0.12" />
@@ -856,7 +856,7 @@ const renderLandingPage = () => `<!doctype html>
         const input = ctx.createGain();
         const filter = ctx.createBiquadFilter();
         const shaper = ctx.createWaveShaper();
-        const delay = ctx.createDelay(1.2);
+        const delay = ctx.createDelay(2.5);
         const delayFeedback = ctx.createGain();
         const delayTone = ctx.createBiquadFilter();
         const dry = ctx.createGain();
@@ -1010,12 +1010,12 @@ const renderLandingPage = () => `<!doctype html>
           return;
         }
 
-        chain.filter.frequency.setTargetAtTime(Math.max(80, Math.min(12000, settings.filterCutoff)), ctx.currentTime, 0.02);
-        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(20, settings.filterQ)), ctx.currentTime, 0.02);
+        chain.filter.frequency.setTargetAtTime(Math.max(20, Math.min(20000, settings.filterCutoff)), ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, settings.filterQ)), ctx.currentTime, 0.02);
 
-        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(1, settings.drive)));
-        chain.delay.delayTime.setTargetAtTime(Math.max(0, Math.min(1.2, settings.delayTime)), ctx.currentTime, 0.02);
-        chain.delayFeedback.gain.setTargetAtTime(Math.max(0, Math.min(0.95, settings.delayFeedback)), ctx.currentTime, 0.02);
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, settings.drive)));
+        chain.delay.delayTime.setTargetAtTime(Math.max(0, Math.min(2.5, settings.delayTime)), ctx.currentTime, 0.02);
+        chain.delayFeedback.gain.setTargetAtTime(Math.max(0, Math.min(0.99, settings.delayFeedback)), ctx.currentTime, 0.02);
 
         const wet = Math.max(0, Math.min(1, settings.delayMix));
         chain.wet.gain.setTargetAtTime(wet, ctx.currentTime, 0.02);
@@ -1023,27 +1023,27 @@ const renderLandingPage = () => `<!doctype html>
         const tapeOn = Boolean(settings.tapeDelay);
         chain.delayTone.frequency.setTargetAtTime(tapeOn ? 2600 : 18000, ctx.currentTime, 0.03);
         chain.delayFeedback.gain.setTargetAtTime(
-          Math.max(0, Math.min(0.95, settings.delayFeedback + (tapeOn ? 0.08 : 0))),
+          Math.max(0, Math.min(0.99, settings.delayFeedback + (tapeOn ? 0.08 : 0))),
           ctx.currentTime,
           0.03,
         );
-        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(1, settings.drive + (tapeOn ? 0.04 : 0))));
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(2, settings.drive + (tapeOn ? 0.04 : 0))));
 
         const richness = Math.max(0, Math.min(1, settings.richness ?? 0.55));
         const warmth = Math.max(0, Math.min(1, settings.warmth ?? 0.48));
         chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7, ctx.currentTime, 0.02);
         chain.filter.frequency.setTargetAtTime(
-          Math.max(80, Math.min(12000, settings.filterCutoff + richness * 2200 - warmth * 900)),
+          Math.max(20, Math.min(20000, settings.filterCutoff + richness * 2200 - warmth * 900)),
           ctx.currentTime,
           0.02,
         );
-        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(20, settings.filterQ + richness * 0.9)), ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(30, settings.filterQ + richness * 0.9)), ctx.currentTime, 0.02);
         chain.output.gain.setTargetAtTime((settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7) + warmth * 0.04, ctx.currentTime, 0.02);
 
         clearFxTimers();
 
         const stutterDepth = Math.max(0, Math.min(1, settings.stutterDepth));
-        const stutterRate = Math.max(1, Math.min(24, settings.stutterRate));
+        const stutterRate = Math.max(0.5, Math.min(40, settings.stutterRate));
         playback.stutterTimer = setInterval(() => {
           if (!playback.chain) {
             return;
