@@ -30,7 +30,7 @@ Server default: `http://localhost:4000`
 ## API
 
 ### `GET /`
-HTML landing page for browsers with quick links to health and presets endpoints.
+Mouse-friendly HTML UI for setting generator controls and calling `POST /api/music/generate` directly from the browser.
 
 ### `GET /health`
 Health check.

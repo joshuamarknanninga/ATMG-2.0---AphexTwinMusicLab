@@ -40,29 +40,292 @@ const renderLandingPage = () => `<!doctype html>
     <title>ATMG 2.0 Music Engine</title>
     <style>
       :root { color-scheme: dark; }
-      body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; background: #0a0f1d; color: #e9eefb; }
-      .wrap { max-width: 840px; margin: 0 auto; padding: 48px 24px; }
-      .tag { display: inline-block; border: 1px solid #3955b8; border-radius: 999px; padding: 6px 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #9db0ff; }
-      h1 { margin: 18px 0 8px; font-size: clamp(28px, 5vw, 44px); line-height: 1.05; }
-      p { color: #c8d2f2; line-height: 1.55; }
-      ul { margin-top: 24px; padding-left: 0; list-style: none; display: grid; gap: 12px; }
-      li { background: #111936; border: 1px solid #2a3d88; border-radius: 12px; }
-      a { display: block; padding: 14px 16px; color: #dbe5ff; text-decoration: none; }
-      a:hover { background: #16214b; }
-      code { color: #9db0ff; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+        background: radial-gradient(circle at top, #1b2c6a 0%, #0a0f1d 48%);
+        color: #ecf1ff;
+      }
+      main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 8px;
+        border: 1px solid #4563ca; border-radius: 999px;
+        padding: 6px 12px; font-size: 12px; letter-spacing: .05em;
+        text-transform: uppercase; color: #aec0ff; background: #101a3e;
+      }
+      h1 { margin: 14px 0 8px; font-size: clamp(28px, 5vw, 44px); }
+      .subtitle { margin: 0 0 18px; color: #c9d4ff; max-width: 880px; line-height: 1.45; }
+      .layout { display: grid; gap: 16px; grid-template-columns: 340px minmax(0, 1fr); }
+      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+      .panel {
+        border: 1px solid #2f438d;
+        border-radius: 14px;
+        background: rgba(16, 24, 54, 0.88);
+        backdrop-filter: blur(4px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      }
+      .panel h2 { margin: 0; font-size: 18px; }
+      .panel-head { padding: 14px 14px 0; }
+      .panel-body { padding: 14px; }
+      .grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .full { grid-column: 1 / -1; }
+      label { display: grid; gap: 6px; font-size: 13px; color: #d4deff; }
+      input, select, button, textarea {
+        width: 100%; border-radius: 10px; border: 1px solid #3b4f9f;
+        background: #0d1638; color: #edf2ff; padding: 10px 11px; font: inherit;
+      }
+      input:focus, select:focus, button:focus, textarea:focus { outline: 2px solid #7691ff; outline-offset: 1px; }
+      button { cursor: pointer; font-weight: 600; }
+      .actions { display: flex; gap: 8px; }
+      .primary { background: linear-gradient(180deg, #4c6ff5, #3f58ba); border-color: #5572eb; }
+      .secondary { background: #1a2756; }
+      .status {
+        min-height: 20px; font-size: 13px; color: #b9c8ff;
+      }
+      .cards { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      @media (max-width: 740px) { .cards { grid-template-columns: 1fr; } }
+      .card {
+        border: 1px solid #314387; border-radius: 12px;
+        background: #121c3f; padding: 10px;
+      }
+      .card .k { font-size: 12px; color: #9cb0ff; }
+      .card .v { margin-top: 4px; font-weight: 700; font-size: 16px; }
+      .endpoint-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+      .endpoint-links a {
+        color: #dce6ff; text-decoration: none; border: 1px solid #3850a3;
+        border-radius: 9px; padding: 7px 10px; background: #111a3a;
+      }
+      textarea { min-height: 280px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      .muted { color: #acbbef; font-size: 12px; }
     </style>
   </head>
   <body>
-    <main class="wrap">
-      <span class="tag">ATMG 2.0</span>
-      <h1>Music engine is running.</h1>
-      <p>Use one of the endpoints below to generate deterministic arrangements, inspect presets, and check service health.</p>
-      <ul>
-        <li><a href="/health"><code>GET /health</code> — service status</a></li>
-        <li><a href="/api/music/presets"><code>GET /api/music/presets</code> — available presets and defaults</a></li>
-      </ul>
-      <p>Tip: send JSON to <code>POST /api/music/generate</code> to build a project from a seed.</p>
+    <main>
+      <span class="badge">ATMG 2.0</span>
+      <h1>Mouse-friendly music generation UI</h1>
+      <p class="subtitle">Use controls on the left to choose presets and composition settings, then generate deterministic projects you can inspect on the right. Same seed + same settings = same result.</p>
+      <div class="layout">
+        <section class="panel" aria-label="Generation Controls">
+          <div class="panel-head"><h2>Generation Controls</h2></div>
+          <div class="panel-body">
+            <form id="generatorForm" class="grid">
+              <label class="full">Seed
+                <input id="seed" name="seed" value="mouse-friendly-demo" />
+              </label>
+              <label>Preset
+                <select id="preset" name="preset"></select>
+              </label>
+              <label>Mood
+                <select id="mood" name="mood"></select>
+              </label>
+              <label>Scale
+                <select id="scale" name="scale"></select>
+              </label>
+              <label>Key
+                <input id="key" name="key" value="A" maxlength="2" />
+              </label>
+              <label>BPM
+                <input id="bpm" name="bpm" type="number" min="70" max="180" step="1" value="132" />
+              </label>
+              <label>Bars
+                <input id="bars" name="bars" type="number" min="2" max="64" step="1" value="16" />
+              </label>
+              <label>Density
+                <input id="density" name="density" type="number" min="0.2" max="0.95" step="0.01" value="0.66" />
+              </label>
+              <label>Swing
+                <input id="swing" name="swing" type="number" min="0" max="0.2" step="0.01" value="0.06" />
+              </label>
+              <label>Syncopation
+                <input id="syncopation" name="syncopation" type="number" min="0" max="1" step="0.01" value="0.68" />
+              </label>
+              <label>Mutation
+                <input id="mutation" name="mutation" type="number" min="0" max="1" step="0.01" value="0.62" />
+              </label>
+              <label>Instability
+                <input id="instability" name="instability" type="number" min="0" max="1" step="0.01" value="0.44" />
+              </label>
+              <label>Brightness
+                <input id="brightness" name="brightness" type="number" min="0" max="1" step="0.01" value="0.48" />
+              </label>
+              <label>Texture
+                <input id="texture" name="texture" type="number" min="0" max="1" step="0.01" value="0.58" />
+              </label>
+              <div class="full actions">
+                <button class="primary" type="submit" id="generateBtn">Generate Project</button>
+                <button class="secondary" type="button" id="loadDefaultsBtn">Load Defaults</button>
+              </div>
+            </form>
+            <p class="status" id="status">Loading presets…</p>
+            <p class="muted">Tip: Click <strong>Load Defaults</strong> after changing preset to quickly reset controls.</p>
+          </div>
+        </section>
+
+        <section class="panel" aria-label="Generation Output">
+          <div class="panel-head"><h2>Output</h2></div>
+          <div class="panel-body">
+            <div class="cards" id="summaryCards">
+              <article class="card"><div class="k">Preset</div><div class="v" id="cardPreset">—</div></article>
+              <article class="card"><div class="k">Total Events</div><div class="v" id="cardEvents">—</div></article>
+              <article class="card"><div class="k">Sections</div><div class="v" id="cardSections">—</div></article>
+            </div>
+            <div class="endpoint-links">
+              <a href="/health" target="_blank" rel="noreferrer">GET /health</a>
+              <a href="/api/music/presets" target="_blank" rel="noreferrer">GET /api/music/presets</a>
+            </div>
+            <label style="margin-top:12px; display:grid; gap:8px;">
+              Generated project JSON
+              <textarea id="result" readonly>{\n  "hint": "Generate a project to see output here."\n}</textarea>
+            </label>
+          </div>
+        </section>
+      </div>
     </main>
+
+    <script>
+      const state = {
+        defaults: null,
+        presets: [],
+        moods: [],
+        scales: [],
+      };
+
+      const form = document.getElementById('generatorForm');
+      const statusEl = document.getElementById('status');
+      const resultEl = document.getElementById('result');
+      const presetEl = document.getElementById('preset');
+      const moodEl = document.getElementById('mood');
+      const scaleEl = document.getElementById('scale');
+      const generateBtn = document.getElementById('generateBtn');
+
+      const toOptions = (select, options, selected) => {
+        select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
+      };
+
+      const setStatus = (message, isError = false) => {
+        statusEl.textContent = message;
+        statusEl.style.color = isError ? '#ff9aa8' : '#b9c8ff';
+      };
+
+      const applyValues = (values) => {
+        if (!values) {
+          return;
+        }
+
+        Object.entries(values).forEach(([key, value]) => {
+          const input = document.getElementById(key);
+          if (!input || value == null || typeof value === 'object') {
+            return;
+          }
+          input.value = String(value);
+        });
+
+        if (values.preset && state.presets.includes(values.preset)) {
+          presetEl.value = values.preset;
+        }
+        if (values.mood && state.moods.includes(values.mood)) {
+          moodEl.value = values.mood;
+        }
+        if (values.scale && state.scales.includes(values.scale)) {
+          scaleEl.value = values.scale;
+        }
+      };
+
+      const updateCards = (project) => {
+        if (!project?.meta) {
+          return;
+        }
+
+        document.getElementById('cardPreset').textContent = project.meta.preset || '—';
+        document.getElementById('cardEvents').textContent = String(project.meta.totalEvents ?? '—');
+        document.getElementById('cardSections').textContent = Array.isArray(project.meta.sections)
+          ? project.meta.sections.map((section) => section.name).join(' • ')
+          : '—';
+      };
+
+      const collectPayload = () => ({
+        seed: document.getElementById('seed').value.trim(),
+        preset: presetEl.value,
+        mood: moodEl.value,
+        scale: scaleEl.value,
+        key: document.getElementById('key').value.trim().toUpperCase(),
+        bpm: Number(document.getElementById('bpm').value),
+        bars: Number(document.getElementById('bars').value),
+        density: Number(document.getElementById('density').value),
+        swing: Number(document.getElementById('swing').value),
+        syncopation: Number(document.getElementById('syncopation').value),
+        mutation: Number(document.getElementById('mutation').value),
+        instability: Number(document.getElementById('instability').value),
+        brightness: Number(document.getElementById('brightness').value),
+        texture: Number(document.getElementById('texture').value),
+      });
+
+      const loadPresets = async () => {
+        setStatus('Loading presets…');
+
+        const response = await fetch('/api/music/presets');
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || 'Failed to load presets');
+        }
+
+        state.defaults = payload.data.defaults;
+        state.presets = payload.data.presets || [];
+        state.moods = payload.data.moods || [];
+        state.scales = payload.data.scales || [];
+
+        toOptions(presetEl, state.presets, state.defaults?.preset);
+        toOptions(moodEl, state.moods, state.defaults?.mood);
+        toOptions(scaleEl, state.scales, state.defaults?.scale);
+
+        applyValues(state.defaults);
+        setStatus('Ready. Choose settings and click Generate Project.');
+      };
+
+      const generate = async (payload) => {
+        setStatus('Generating project…');
+        generateBtn.disabled = true;
+
+        const response = await fetch('/api/music/generate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || 'Generation failed');
+        }
+
+        resultEl.value = JSON.stringify(result.data, null, 2);
+        updateCards(result.data);
+        setStatus('Generated successfully.');
+      };
+
+      document.getElementById('loadDefaultsBtn').addEventListener('click', () => {
+        applyValues(state.defaults);
+        setStatus('Defaults loaded.');
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        try {
+          await generate(collectPayload());
+        } catch (error) {
+          setStatus(error.message || 'Failed to generate project.', true);
+        } finally {
+          generateBtn.disabled = false;
+        }
+      });
+
+      loadPresets().catch((error) => {
+        setStatus(error.message || 'Failed to initialize UI.', true);
+      });
+    </script>
   </body>
 </html>`;
 
