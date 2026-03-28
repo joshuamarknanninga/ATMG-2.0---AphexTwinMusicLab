@@ -17,7 +17,7 @@ export const validateGeneratorRequest = (body) => {
 
   return {
     bpm: payload.bpm == null ? undefined : asNumber(payload.bpm, 'bpm', { min: 70, max: 180 }),
-    bars: payload.bars == null ? undefined : asNumber(payload.bars, 'bars', { min: 2, max: 64, integer: true }),
+    bars: payload.bars == null ? undefined : asNumber(payload.bars, 'bars', { min: 2, max: 512, integer: true }),
     key: payload.key == null ? undefined : asString(payload.key, 'key', { min: 1, max: 2 }),
     scale: payload.scale == null ? undefined : asEnum(payload.scale, 'scale', SCALE_OPTIONS),
     mood: payload.mood == null ? undefined : asEnum(payload.mood, 'mood', MOOD_OPTIONS),

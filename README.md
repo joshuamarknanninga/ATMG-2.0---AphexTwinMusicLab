@@ -9,6 +9,7 @@ The repository now ships with a production-friendly, dependency-light Node API f
 - deterministic, seed-based music generation,
 - theory-aware chord, bass, melody, texture, and drum tracks,
 - section-aware arrangement with seed / lift / fracture / release forms,
+- automatic duration normalization to 4–12 minutes,
 - controllable syncopation, mutation, instability, brightness, and texture,
 - Euclidean and rotated drum programming,
 - clip analysis for symbolic note data,
@@ -30,7 +31,7 @@ Server default: `http://localhost:4000`
 ## API
 
 ### `GET /`
-Mouse-friendly HTML UI for setting generator controls, generating projects, and playing generated JSON as browser audio preview.
+Mouse-friendly HTML UI for setting generator controls, generating projects, showing measures + total duration, and playing generated JSON as browser audio preview.
 
 ### `GET /health`
 Health check.
@@ -56,7 +57,7 @@ Generates a complete symbolic project.
   "preset": "fractured",
   "key": "A",
   "scale": "minor",
-  "bars": 16,
+  "bars": 132,
   "bpm": 134,
   "density": 0.72,
   "swing": 0.05,

@@ -83,7 +83,7 @@ const renderLandingPage = () => `<!doctype html>
       .status {
         min-height: 20px; font-size: 13px; color: #b9c8ff;
       }
-      .cards { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .cards { display: grid; gap: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
       @media (max-width: 740px) { .cards { grid-template-columns: 1fr; } }
       .card {
         border: 1px solid #314387; border-radius: 12px;
@@ -129,7 +129,7 @@ const renderLandingPage = () => `<!doctype html>
                 <input id="bpm" name="bpm" type="number" min="70" max="180" step="1" value="132" />
               </label>
               <label>Bars
-                <input id="bars" name="bars" type="number" min="2" max="64" step="1" value="16" />
+                <input id="bars" name="bars" type="number" min="2" max="512" step="1" value="132" />
               </label>
               <label>Density
                 <input id="density" name="density" type="number" min="0.2" max="0.95" step="0.01" value="0.66" />
@@ -171,6 +171,8 @@ const renderLandingPage = () => `<!doctype html>
               <article class="card"><div class="k">Preset</div><div class="v" id="cardPreset">—</div></article>
               <article class="card"><div class="k">Total Events</div><div class="v" id="cardEvents">—</div></article>
               <article class="card"><div class="k">Sections</div><div class="v" id="cardSections">—</div></article>
+              <article class="card"><div class="k">Measures</div><div class="v" id="cardMeasures">—</div></article>
+              <article class="card"><div class="k">Duration</div><div class="v" id="cardDuration">—</div></article>
             </div>
             <div class="endpoint-links">
               <a href="/health" target="_blank" rel="noreferrer">GET /health</a>
@@ -421,6 +423,10 @@ const renderLandingPage = () => `<!doctype html>
         document.getElementById('cardSections').textContent = Array.isArray(project.meta.sections)
           ? project.meta.sections.map((section) => section.name).join(' • ')
           : '—';
+        document.getElementById('cardMeasures').textContent = String(project.meta.measures ?? project.meta.bars ?? '—');
+        document.getElementById('cardDuration').textContent = project.meta.durationMinutes
+          ? project.meta.durationMinutes.toFixed(2) + ' min'
+          : '—';
       };
 
       const collectPayload = () => ({
@@ -482,7 +488,7 @@ const renderLandingPage = () => `<!doctype html>
         state.currentProject = result.data;
         resultEl.value = JSON.stringify(result.data, null, 2);
         updateCards(result.data);
-        setStatus('Generated successfully. Click Play Project to audition.');
+        setStatus('Generated successfully. ' + (result.data.meta.durationMinutes ? 'Length: ' + result.data.meta.durationMinutes.toFixed(2) + ' min. ' : '') + 'Click Play Project to audition.');
       };
 
       document.getElementById('loadDefaultsBtn').addEventListener('click', () => {

@@ -11,7 +11,7 @@ import {
 
 const DEFAULTS = {
   bpm: 132,
-  bars: 16,
+  bars: 132,
   key: 'A',
   scale: 'minor',
   mood: 'restless',
@@ -126,6 +126,30 @@ export const euclidean = (pulses, steps) => {
 
 const grooveOffset = (stepIndex, swingAmount) => (stepIndex % 2 === 1 ? swingAmount : 0);
 const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
+const MIN_DURATION_MINUTES = 4;
+const MAX_DURATION_MINUTES = 12;
+
+const barsForMinutes = (minutes, bpm) => Math.ceil((minutes * bpm) / 4);
+
+const normalizeDuration = (settings) => {
+  const minBars = barsForMinutes(MIN_DURATION_MINUTES, settings.bpm);
+  const maxBars = barsForMinutes(MAX_DURATION_MINUTES, settings.bpm);
+  const requestedBars = settings.bars;
+  const normalizedBars = clamp(requestedBars, minBars, maxBars);
+  return {
+    ...settings,
+    bars: normalizedBars,
+    durationPolicy: {
+      requestedBars,
+      minBars,
+      maxBars,
+      adjusted: requestedBars !== normalizedBars,
+      minMinutes: MIN_DURATION_MINUTES,
+      maxMinutes: MAX_DURATION_MINUTES,
+    },
+  };
+};
+
 
 const mergeSettings = (input) => {
   const overrides = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
@@ -134,7 +158,7 @@ const mergeSettings = (input) => {
     ...DEFAULTS,
     ...presetProfile,
     ...overrides,
-    bars: clamp(Number(overrides.bars ?? presetProfile.bars ?? DEFAULTS.bars), 2, 64),
+    bars: clamp(Number(overrides.bars ?? presetProfile.bars ?? DEFAULTS.bars), 2, 512),
     bpm: clamp(Number(overrides.bpm ?? presetProfile.bpm ?? DEFAULTS.bpm), 70, 180),
     density: clamp(Number(overrides.density ?? presetProfile.density ?? DEFAULTS.density), 0.2, 0.95),
     swing: clamp(Number(overrides.swing ?? presetProfile.swing ?? DEFAULTS.swing), 0, 0.2),
@@ -425,7 +449,7 @@ const summarizeTrack = (events) => ({
 });
 
 export const generateProject = (input = {}) => {
-  const settings = mergeSettings(input);
+  const settings = normalizeDuration(mergeSettings(input));
   const random = mulberry32(seedToInt(settings.seed));
   const sections = buildSections(settings.bars, settings);
   const progression = getProgressionDegrees(settings.mood);
@@ -444,10 +468,15 @@ export const generateProject = (input = {}) => {
   };
 
   const trackSummary = Object.fromEntries(Object.entries(tracks).map(([name, events]) => [name, summarizeTrack(events)]));
+  const durationBeats = settings.bars * 4;
+  const durationMinutes = Number((durationBeats / settings.bpm).toFixed(3));
 
   return {
     meta: {
       ...settings,
+      measures: settings.bars,
+      durationBeats,
+      durationMinutes,
       presetProfile: PRESET_PROFILES[settings.preset],
       progression,
       sections,

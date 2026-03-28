@@ -8,14 +8,16 @@ test('euclidean spreads hits across the bar', () => {
 });
 
 test('project generation is deterministic for a seed', () => {
-  const first = generateProject({ seed: 'same-seed', bars: 8, preset: 'fractured' });
-  const second = generateProject({ seed: 'same-seed', bars: 8, preset: 'fractured' });
+  const first = generateProject({ seed: 'same-seed', bars: 132, preset: 'fractured' });
+  const second = generateProject({ seed: 'same-seed', bars: 132, preset: 'fractured' });
 
   assert.deepEqual(first, second);
   assert.equal(first.meta.totalEvents > 0, true);
   assert.equal(first.tracks.melody.length > 0, true);
   assert.equal(first.tracks.texture.length > 0, true);
   assert.deepEqual(Object.keys(first.meta.trackSummary), ['chords', 'bass', 'melody', 'texture', 'drums']);
+  assert.equal(first.meta.durationMinutes >= 4, true);
+  assert.equal(first.meta.durationMinutes <= 12, true);
 });
 
 test('different presets reshape the arrangement profile', () => {
@@ -45,4 +47,17 @@ test('analysis summarizes symbolic clips', () => {
     averageVelocity: 84,
     averageIntervalLeap: 5,
   });
+});
+
+
+test('duration policy clamps output between 4 and 12 minutes', () => {
+  const tooShort = generateProject({ seed: 'duration-short', bpm: 120, bars: 16 });
+  const tooLong = generateProject({ seed: 'duration-long', bpm: 120, bars: 500 });
+
+  assert.equal(tooShort.meta.measures, 120);
+  assert.equal(tooLong.meta.measures, 360);
+  assert.equal(tooShort.meta.durationPolicy.adjusted, true);
+  assert.equal(tooLong.meta.durationPolicy.adjusted, true);
+  assert.equal(tooShort.meta.durationMinutes >= 4 && tooShort.meta.durationMinutes <= 12, true);
+  assert.equal(tooLong.meta.durationMinutes >= 4 && tooLong.meta.durationMinutes <= 12, true);
 });
