@@ -17,6 +17,10 @@ The repository now ships with a production-friendly, dependency-light Node API f
 ## Quick start
 
 ```bash
+# from repo root
+npm run dev
+
+# or run directly in server/
 cd server
 npm start
 ```
