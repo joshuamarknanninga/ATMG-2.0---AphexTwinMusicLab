@@ -142,6 +142,11 @@ All manipulators process the original generated preview signal in-browser throug
   - EQ/frequency balance,
   - Energy leveling.
 
+### Simpler default generation profile
+
+- Default generation now starts with a shorter arrangement (**24 bars**) and lower baseline density for less crowded output.
+- Duration policy now clamps generated projects to approximately **1–4 minutes** (instead of long-form defaults) to keep preview/render fast and easier to mix.
+
 ## Research references used
 
 Implementation references used for this update:

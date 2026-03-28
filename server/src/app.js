@@ -154,10 +154,10 @@ const renderLandingPage = () => `<!doctype html>
                 <input id="bpm" name="bpm" type="number" min="70" max="180" step="1" value="132" />
               </label>
               <label>Bars
-                <input id="bars" name="bars" type="number" min="2" max="512" step="1" value="132" />
+                <input id="bars" name="bars" type="number" min="2" max="256" step="1" value="24" />
               </label>
               <label>Density
-                <input id="density" name="density" type="number" min="0.2" max="0.95" step="0.01" value="0.66" />
+                <input id="density" name="density" type="number" min="0.15" max="0.8" step="0.01" value="0.42" />
               </label>
               <label>Swing
                 <input id="swing" name="swing" type="number" min="0" max="0.2" step="0.01" value="0.06" />

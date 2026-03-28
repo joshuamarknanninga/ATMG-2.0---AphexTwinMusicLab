@@ -11,16 +11,16 @@ import {
 
 const DEFAULTS = {
   bpm: 132,
-  bars: 132,
+  bars: 24,
   key: 'A',
   scale: 'minor',
   mood: 'restless',
   preset: 'fractured',
-  density: 0.66,
-  swing: 0.06,
-  syncopation: 0.68,
-  mutation: 0.62,
-  instability: 0.44,
+  density: 0.42,
+  swing: 0.04,
+  syncopation: 0.46,
+  mutation: 0.34,
+  instability: 0.22,
   brightness: 0.48,
   texture: 0.58,
   seed: 'atmg-experimental-idm',
@@ -30,10 +30,10 @@ const PRESET_PROFILES = {
   fractured: {
     mood: 'restless',
     scale: 'minor',
-    density: 0.72,
-    syncopation: 0.82,
-    mutation: 0.7,
-    instability: 0.56,
+    density: 0.5,
+    syncopation: 0.62,
+    mutation: 0.48,
+    instability: 0.34,
     brightness: 0.42,
     texture: 0.62,
     swing: 0.05,
@@ -41,10 +41,10 @@ const PRESET_PROFILES = {
   lucid: {
     mood: 'euphoric',
     scale: 'dorian',
-    density: 0.58,
+    density: 0.4,
     syncopation: 0.48,
-    mutation: 0.45,
-    instability: 0.26,
+    mutation: 0.3,
+    instability: 0.18,
     brightness: 0.66,
     texture: 0.72,
     swing: 0.04,
@@ -52,10 +52,10 @@ const PRESET_PROFILES = {
   corrosive: {
     mood: 'dark',
     scale: 'phrygian',
-    density: 0.78,
-    syncopation: 0.74,
-    mutation: 0.82,
-    instability: 0.7,
+    density: 0.56,
+    syncopation: 0.6,
+    mutation: 0.58,
+    instability: 0.42,
     brightness: 0.24,
     texture: 0.44,
     swing: 0.07,
@@ -63,10 +63,10 @@ const PRESET_PROFILES = {
   hypnotic: {
     mood: 'ambient',
     scale: 'mixolydian',
-    density: 0.52,
+    density: 0.34,
     syncopation: 0.36,
-    mutation: 0.34,
-    instability: 0.18,
+    mutation: 0.24,
+    instability: 0.14,
     brightness: 0.58,
     texture: 0.84,
     swing: 0.03,
@@ -126,8 +126,8 @@ export const euclidean = (pulses, steps) => {
 
 const grooveOffset = (stepIndex, swingAmount) => (stepIndex % 2 === 1 ? swingAmount : 0);
 const average = (values) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
-const MIN_DURATION_MINUTES = 4;
-const MAX_DURATION_MINUTES = 12;
+const MIN_DURATION_MINUTES = 1;
+const MAX_DURATION_MINUTES = 4;
 
 const barsForMinutes = (minutes, bpm) => Math.ceil((minutes * bpm) / 4);
 
@@ -158,9 +158,9 @@ const mergeSettings = (input) => {
     ...DEFAULTS,
     ...presetProfile,
     ...overrides,
-    bars: clamp(Number(overrides.bars ?? presetProfile.bars ?? DEFAULTS.bars), 2, 512),
+    bars: clamp(Number(overrides.bars ?? presetProfile.bars ?? DEFAULTS.bars), 2, 256),
     bpm: clamp(Number(overrides.bpm ?? presetProfile.bpm ?? DEFAULTS.bpm), 70, 180),
-    density: clamp(Number(overrides.density ?? presetProfile.density ?? DEFAULTS.density), 0.2, 0.95),
+    density: clamp(Number(overrides.density ?? presetProfile.density ?? DEFAULTS.density), 0.15, 0.8),
     swing: clamp(Number(overrides.swing ?? presetProfile.swing ?? DEFAULTS.swing), 0, 0.2),
     syncopation: clamp(Number(overrides.syncopation ?? presetProfile.syncopation ?? DEFAULTS.syncopation), 0, 1),
     mutation: clamp(Number(overrides.mutation ?? presetProfile.mutation ?? DEFAULTS.mutation), 0, 1),
@@ -215,7 +215,7 @@ const sectionStateForBar = (barIndex, sections, settings) => {
   return {
     ...section,
     localProgress,
-    density: clamp(settings.density * (0.74 + section.energy * 0.5), 0.2, 0.98),
+    density: clamp(settings.density * (0.65 + section.energy * 0.35), 0.18, 0.72),
     syncopation: clamp(settings.syncopation * (0.7 + section.mutation * 0.45), 0, 1),
     instability: clamp(settings.instability * (0.72 + section.mutation * 0.55), 0, 1),
     brightness: clamp(settings.brightness * (0.66 + section.texture * 0.55), 0, 1),
@@ -413,11 +413,11 @@ const createDrumTrack = ({ bars, sections, settings, random }) => {
 
   for (let barIndex = 0; barIndex < bars; barIndex += 1) {
     const state = sectionStateForBar(barIndex, sections, settings);
-    const kick = rotate(euclidean(Math.round(3 + state.density * 6), 16), maybe(random, state.syncopation * 0.55) ? 1 : 0);
+    const kick = rotate(euclidean(Math.round(2 + state.density * 4), 16), maybe(random, state.syncopation * 0.4) ? 1 : 0);
     const snare = rotate(euclidean(2 + (state.energy > 0.72 ? 1 : 0), 16), 4);
-    const hat = rotate(euclidean(Math.round(6 + state.density * 8), 16), Math.round(state.syncopation * 2));
-    const perc = rotate(euclidean(Math.round(2 + state.syncopation * 5), 12).flatMap((step) => [step, 0]).slice(0, 16), 1);
-    const openHat = rotate(euclidean(state.energy > 0.7 ? 3 : 2, 16), 2);
+    const hat = rotate(euclidean(Math.round(4 + state.density * 6), 16), Math.round(state.syncopation * 2));
+    const perc = rotate(euclidean(Math.round(1 + state.syncopation * 4), 12).flatMap((step) => [step, 0]).slice(0, 16), 1);
+    const openHat = rotate(euclidean(state.energy > 0.7 ? 2 : 1, 16), 2);
 
     addDrumLane({ events, lane: 'kick', midi: DRUM_MAP.kick, pattern: kick, barIndex, velocityBase: 118, swing: settings.swing * 0.35, density: state.density, random, instability: state.instability });
     addDrumLane({ events, lane: 'snare', midi: DRUM_MAP.snare, pattern: snare, barIndex, velocityBase: 108, swing: settings.swing, density: state.density, random, instability: state.instability });
