@@ -12,26 +12,59 @@ import { fail, ok, readJsonBody } from './utils/http.js';
 
 const resolveOrigin = (req) => (env.CORS_ORIGIN === '*' ? '*' : req.headers.origin ?? env.CORS_ORIGIN);
 
-const sendText = (res, status, body, origin) => {
+const commonHeaders = (origin) => ({
+  'access-control-allow-origin': origin,
+  'access-control-allow-headers': 'content-type, authorization',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'x-content-type-options': 'nosniff',
+});
+
+const sendHtml = (res, status, body, origin) => {
   res.writeHead(status, {
-    'content-type': 'text/plain; charset=utf-8',
-    'access-control-allow-origin': origin,
-    'access-control-allow-headers': 'content-type, authorization',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'x-content-type-options': 'nosniff',
+    ...commonHeaders(origin),
+    'content-type': 'text/html; charset=utf-8',
   });
   res.end(body);
 };
 
 const sendEmpty = (res, status, origin) => {
-  res.writeHead(status, {
-    'access-control-allow-origin': origin,
-    'access-control-allow-headers': 'content-type, authorization',
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'x-content-type-options': 'nosniff',
-  });
+  res.writeHead(status, commonHeaders(origin));
   res.end();
 };
+
+const renderLandingPage = () => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ATMG 2.0 Music Engine</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; background: #0a0f1d; color: #e9eefb; }
+      .wrap { max-width: 840px; margin: 0 auto; padding: 48px 24px; }
+      .tag { display: inline-block; border: 1px solid #3955b8; border-radius: 999px; padding: 6px 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #9db0ff; }
+      h1 { margin: 18px 0 8px; font-size: clamp(28px, 5vw, 44px); line-height: 1.05; }
+      p { color: #c8d2f2; line-height: 1.55; }
+      ul { margin-top: 24px; padding-left: 0; list-style: none; display: grid; gap: 12px; }
+      li { background: #111936; border: 1px solid #2a3d88; border-radius: 12px; }
+      a { display: block; padding: 14px 16px; color: #dbe5ff; text-decoration: none; }
+      a:hover { background: #16214b; }
+      code { color: #9db0ff; }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <span class="tag">ATMG 2.0</span>
+      <h1>Music engine is running.</h1>
+      <p>Use one of the endpoints below to generate deterministic arrangements, inspect presets, and check service health.</p>
+      <ul>
+        <li><a href="/health"><code>GET /health</code> — service status</a></li>
+        <li><a href="/api/music/presets"><code>GET /api/music/presets</code> — available presets and defaults</a></li>
+      </ul>
+      <p>Tip: send JSON to <code>POST /api/music/generate</code> to build a project from a seed.</p>
+    </main>
+  </body>
+</html>`;
 
 const routeRequest = async (req, res) => {
   const origin = resolveOrigin(req);
@@ -42,12 +75,7 @@ const routeRequest = async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/') {
-    return sendText(
-      res,
-      200,
-      'ATMG 2.0 music engine is running. Use /health or /api/music/presets to begin.',
-      origin,
-    );
+    return sendHtml(res, 200, renderLandingPage(), origin);
   }
 
   if (req.method === 'GET' && url.pathname === '/favicon.ico') {

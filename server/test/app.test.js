@@ -28,7 +28,8 @@ test('root and favicon endpoints avoid confusing browser 404s', async () => {
   const favicon = await request(port, '/favicon.ico');
 
   assert.equal(root.statusCode, 200);
-  assert.match(root.body, /ATMG 2\.0 music engine is running/);
+  assert.match(root.body, /<title>ATMG 2\.0 Music Engine<\/title>/);
+  assert.match(root.body, /GET \/health/);
   assert.equal(favicon.statusCode, 204);
 
   await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
