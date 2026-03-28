@@ -98,3 +98,28 @@ Analyzes symbolic note clips.
 - **Deterministic:** identical seeds produce identical arrangements.
 - **Musical quality:** the engine combines section-aware form, voice-leading, motif memory, controlled mutation, syncopation, and Euclidean spacing to produce more coherent and varied results than naïve random note emission.
 - **Extensible:** you can later swap in real persistence, synth/rendering layers, and sample-management features without rewriting the composition core.
+
+## Browser pedalboard + controller layer
+
+The root UI now includes a pedalboard-style signal manipulator section with real-time browser audio processing:
+
+- **Glitch** (random gate interruptions),
+- **Stutter** (rate/depth gate modulation),
+- **Reverse-style envelope** (tonal envelope inversion blend),
+- **Filter** (cutoff + resonance),
+- **Distortion** (WaveShaper drive),
+- **Delay** (time/feedback/mix),
+- **Drum machine pads** (kick/snare/hat one-shots),
+- **MIDI controller input** (Web MIDI note trigger),
+- **Synth profiles** (`mini_inspired`, `micro_inspired`, `poly_clean`) inspired by compact hardware synth workflows.
+
+All manipulators process the original generated preview signal in-browser through a single FX chain.
+
+## Research references used
+
+Implementation references used for this update:
+
+- MDN Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+- MDN OscillatorNode: https://developer.mozilla.org/en-US/docs/Web/API/OscillatorNode
+- MDN Web MIDI API: https://developer.mozilla.org/en-US/docs/Web/API/Web_MIDI_API
+- W3C Web Audio API specification: https://www.w3.org/TR/webaudio/

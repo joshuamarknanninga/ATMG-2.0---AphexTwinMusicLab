@@ -47,7 +47,7 @@ const renderLandingPage = () => `<!doctype html>
         background: radial-gradient(circle at top, #1b2c6a 0%, #0a0f1d 48%);
         color: #ecf1ff;
       }
-      main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+      main { max-width: 1200px; margin: 0 auto; padding: 28px 16px 40px; }
       .badge {
         display: inline-flex; align-items: center; gap: 8px;
         border: 1px solid #4563ca; border-radius: 999px;
@@ -55,9 +55,9 @@ const renderLandingPage = () => `<!doctype html>
         text-transform: uppercase; color: #aec0ff; background: #101a3e;
       }
       h1 { margin: 14px 0 8px; font-size: clamp(28px, 5vw, 44px); }
-      .subtitle { margin: 0 0 18px; color: #c9d4ff; max-width: 880px; line-height: 1.45; }
-      .layout { display: grid; gap: 16px; grid-template-columns: 340px minmax(0, 1fr); }
-      @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+      .subtitle { margin: 0 0 18px; color: #c9d4ff; max-width: 980px; line-height: 1.45; }
+      .layout { display: grid; gap: 16px; grid-template-columns: 420px minmax(0, 1fr); }
+      @media (max-width: 1040px) { .layout { grid-template-columns: 1fr; } }
       .panel {
         border: 1px solid #2f438d;
         border-radius: 14px;
@@ -80,15 +80,11 @@ const renderLandingPage = () => `<!doctype html>
       .actions { display: flex; gap: 8px; flex-wrap: wrap; }
       .primary { background: linear-gradient(180deg, #4c6ff5, #3f58ba); border-color: #5572eb; }
       .secondary { background: #1a2756; }
-      .status {
-        min-height: 20px; font-size: 13px; color: #b9c8ff;
-      }
+      .status { min-height: 20px; font-size: 13px; color: #b9c8ff; }
       .cards { display: grid; gap: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-      @media (max-width: 740px) { .cards { grid-template-columns: 1fr; } }
-      .card {
-        border: 1px solid #314387; border-radius: 12px;
-        background: #121c3f; padding: 10px;
-      }
+      @media (max-width: 900px) { .cards { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 640px) { .cards { grid-template-columns: 1fr; } }
+      .card { border: 1px solid #314387; border-radius: 12px; background: #121c3f; padding: 10px; }
       .card .k { font-size: 12px; color: #9cb0ff; }
       .card .v { margin-top: 4px; font-weight: 700; font-size: 16px; }
       .endpoint-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
@@ -96,18 +92,23 @@ const renderLandingPage = () => `<!doctype html>
         color: #dce6ff; text-decoration: none; border: 1px solid #3850a3;
         border-radius: 9px; padding: 7px 10px; background: #111a3a;
       }
-      textarea { min-height: 280px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      textarea { min-height: 300px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
       .muted { color: #acbbef; font-size: 12px; }
+      .section-title { margin-top: 10px; margin-bottom: 8px; color: #9cb0ff; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+      .pads { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .pad { border-color: #4f67bf; background: #172557; }
+      .fx-note { margin-top: 8px; color: #a8b9f4; font-size: 12px; }
+      .midi-state { font-size: 12px; color: #9ec2ff; }
     </style>
   </head>
   <body>
     <main>
       <span class="badge">ATMG 2.0</span>
-      <h1>Mouse-friendly music generation UI</h1>
-      <p class="subtitle">Choose settings, generate a deterministic project, and play it directly in your browser using the built-in synth preview.</p>
+      <h1>Mouse-friendly music generation + FX pedalboard UI</h1>
+      <p class="subtitle">Generate deterministic songs, preview them in-browser, and manipulate the original signal with a pedalboard-style multi-effects chain (glitch, stutter, reverse-style envelope, filter, distortion, delay), plus drum pads, Web MIDI input, and synth profiles inspired by mini/micro-style hardware workflows.</p>
       <div class="layout">
         <section class="panel" aria-label="Generation Controls">
-          <div class="panel-head"><h2>Generation Controls</h2></div>
+          <div class="panel-head"><h2>Generation + Performance Controls</h2></div>
           <div class="panel-body">
             <form id="generatorForm" class="grid">
               <label class="full">Seed
@@ -152,15 +153,65 @@ const renderLandingPage = () => `<!doctype html>
               <label>Texture
                 <input id="texture" name="texture" type="number" min="0" max="1" step="0.01" value="0.58" />
               </label>
+
+              <div class="full section-title">Synth + Multi FX Pedalboard</div>
+              <label>Synth Profile
+                <select id="synthProfile">
+                  <option value="mini_inspired">Mini-inspired</option>
+                  <option value="micro_inspired">Micro-inspired</option>
+                  <option value="poly_clean">Poly Clean</option>
+                </select>
+              </label>
+              <label>Filter Cutoff (Hz)
+                <input id="fxFilterCutoff" type="number" min="80" max="12000" step="10" value="1800" />
+              </label>
+              <label>Filter Resonance (Q)
+                <input id="fxFilterQ" type="number" min="0.1" max="20" step="0.1" value="1.2" />
+              </label>
+              <label>Distortion Drive
+                <input id="fxDrive" type="number" min="0" max="1" step="0.01" value="0.2" />
+              </label>
+              <label>Delay Time (s)
+                <input id="fxDelayTime" type="number" min="0" max="1.2" step="0.01" value="0.28" />
+              </label>
+              <label>Delay Feedback
+                <input id="fxDelayFeedback" type="number" min="0" max="0.95" step="0.01" value="0.32" />
+              </label>
+              <label>Delay Mix
+                <input id="fxDelayMix" type="number" min="0" max="1" step="0.01" value="0.24" />
+              </label>
+              <label>Stutter Rate (Hz)
+                <input id="fxStutterRate" type="number" min="1" max="24" step="0.1" value="8" />
+              </label>
+              <label>Stutter Depth
+                <input id="fxStutterDepth" type="number" min="0" max="1" step="0.01" value="0.12" />
+              </label>
+              <label>Glitch Chance
+                <input id="fxGlitchChance" type="number" min="0" max="1" step="0.01" value="0.08" />
+              </label>
+              <label>Reverse Mix
+                <input id="fxReverseMix" type="number" min="0" max="1" step="0.01" value="0.12" />
+              </label>
+
+              <div class="full section-title">Transport + Controllers</div>
               <div class="full actions">
                 <button class="primary" type="submit" id="generateBtn">Generate Project</button>
                 <button class="secondary" type="button" id="loadDefaultsBtn">Load Defaults</button>
                 <button class="secondary" type="button" id="playBtn">Play Project</button>
                 <button class="secondary" type="button" id="stopBtn">Stop</button>
+                <button class="secondary" type="button" id="midiBtn">Connect MIDI</button>
+              </div>
+              <div class="full midi-state" id="midiState">MIDI: not connected</div>
+
+              <div class="full section-title">Drum Machine Pads</div>
+              <div class="full pads">
+                <button class="pad" type="button" data-pad="kick">Kick</button>
+                <button class="pad" type="button" data-pad="snare">Snare</button>
+                <button class="pad" type="button" data-pad="hat">Hat</button>
               </div>
             </form>
             <p class="status" id="status">Loading presets…</p>
-            <p class="muted">Tip: After generating, click <strong>Play Project</strong> to audition the arrangement from the JSON output.</p>
+            <p class="fx-note">Effects process the original browser synth signal chain in real-time: filter → distortion → delay + stutter/glitch gate, with reverse-style envelope manipulation for tonal notes.</p>
           </div>
         </section>
 
@@ -200,6 +251,11 @@ const renderLandingPage = () => `<!doctype html>
         context: null,
         timeouts: [],
         activeNodes: new Set(),
+        stutterTimer: null,
+        glitchTimer: null,
+        midi: null,
+        midiInputs: [],
+        chain: null,
       };
 
       const form = document.getElementById('generatorForm');
@@ -211,6 +267,8 @@ const renderLandingPage = () => `<!doctype html>
       const generateBtn = document.getElementById('generateBtn');
       const playBtn = document.getElementById('playBtn');
       const stopBtn = document.getElementById('stopBtn');
+      const midiBtn = document.getElementById('midiBtn');
+      const midiStateEl = document.getElementById('midiState');
 
       const toOptions = (select, options, selected) => {
         select.innerHTML = options.map((value) => '<option value="' + value + '"' + (value === selected ? ' selected' : '') + '>' + value + '</option>').join('');
@@ -228,9 +286,75 @@ const renderLandingPage = () => `<!doctype html>
         node.onended = () => playback.activeNodes.delete(node);
       };
 
+      const makeDistortionCurve = (amount) => {
+        const k = Math.max(0.001, amount * 400);
+        const samples = 44100;
+        const curve = new Float32Array(samples);
+
+        for (let index = 0; index < samples; index += 1) {
+          const x = (index * 2) / samples - 1;
+          curve[index] = ((3 + k) * x * 20 * (Math.PI / 180)) / (Math.PI + k * Math.abs(x));
+        }
+
+        return curve;
+      };
+
+      const createChain = (ctx) => {
+        const input = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        const shaper = ctx.createWaveShaper();
+        const delay = ctx.createDelay(1.2);
+        const delayFeedback = ctx.createGain();
+        const dry = ctx.createGain();
+        const wet = ctx.createGain();
+        const stutterGate = ctx.createGain();
+        const output = ctx.createGain();
+
+        filter.type = 'lowpass';
+        filter.frequency.value = 1800;
+        filter.Q.value = 1.2;
+
+        shaper.curve = makeDistortionCurve(0.2);
+        shaper.oversample = '4x';
+
+        delay.delayTime.value = 0.28;
+        delayFeedback.gain.value = 0.32;
+        dry.gain.value = 0.76;
+        wet.gain.value = 0.24;
+        stutterGate.gain.value = 1;
+        output.gain.value = 0.75;
+
+        input.connect(filter);
+        filter.connect(shaper);
+        shaper.connect(dry);
+        shaper.connect(delay);
+        delay.connect(delayFeedback);
+        delayFeedback.connect(delay);
+        delay.connect(wet);
+
+        dry.connect(stutterGate);
+        wet.connect(stutterGate);
+        stutterGate.connect(output);
+        output.connect(ctx.destination);
+
+        return { input, filter, shaper, delay, delayFeedback, dry, wet, stutterGate, output };
+      };
+
+      const clearFxTimers = () => {
+        if (playback.stutterTimer) {
+          clearInterval(playback.stutterTimer);
+          playback.stutterTimer = null;
+        }
+        if (playback.glitchTimer) {
+          clearInterval(playback.glitchTimer);
+          playback.glitchTimer = null;
+        }
+      };
+
       const stopPlayback = () => {
         playback.timeouts.forEach((timeoutId) => clearTimeout(timeoutId));
         playback.timeouts = [];
+        clearFxTimers();
 
         for (const node of playback.activeNodes) {
           try {
@@ -241,11 +365,16 @@ const renderLandingPage = () => `<!doctype html>
         }
 
         playback.activeNodes.clear();
+
+        if (playback.chain?.stutterGate) {
+          playback.chain.stutterGate.gain.setValueAtTime(1, playback.context.currentTime);
+        }
       };
 
       const ensureContext = async () => {
         if (!playback.context) {
           playback.context = new AudioContext();
+          playback.chain = createChain(playback.context);
         }
 
         if (playback.context.state === 'suspended') {
@@ -255,18 +384,84 @@ const renderLandingPage = () => `<!doctype html>
         return playback.context;
       };
 
-      const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine' }) => {
+      const getFxSettings = () => ({
+        synthProfile: document.getElementById('synthProfile').value,
+        filterCutoff: Number(document.getElementById('fxFilterCutoff').value),
+        filterQ: Number(document.getElementById('fxFilterQ').value),
+        drive: Number(document.getElementById('fxDrive').value),
+        delayTime: Number(document.getElementById('fxDelayTime').value),
+        delayFeedback: Number(document.getElementById('fxDelayFeedback').value),
+        delayMix: Number(document.getElementById('fxDelayMix').value),
+        stutterRate: Number(document.getElementById('fxStutterRate').value),
+        stutterDepth: Number(document.getElementById('fxStutterDepth').value),
+        glitchChance: Number(document.getElementById('fxGlitchChance').value),
+        reverseMix: Number(document.getElementById('fxReverseMix').value),
+      });
+
+      const applyFxSettings = (ctx, settings) => {
+        const chain = playback.chain;
+        if (!chain) {
+          return;
+        }
+
+        chain.filter.frequency.setTargetAtTime(Math.max(80, Math.min(12000, settings.filterCutoff)), ctx.currentTime, 0.02);
+        chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(20, settings.filterQ)), ctx.currentTime, 0.02);
+
+        chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(1, settings.drive)));
+        chain.delay.delayTime.setTargetAtTime(Math.max(0, Math.min(1.2, settings.delayTime)), ctx.currentTime, 0.02);
+        chain.delayFeedback.gain.setTargetAtTime(Math.max(0, Math.min(0.95, settings.delayFeedback)), ctx.currentTime, 0.02);
+
+        const wet = Math.max(0, Math.min(1, settings.delayMix));
+        chain.wet.gain.setTargetAtTime(wet, ctx.currentTime, 0.02);
+        chain.dry.gain.setTargetAtTime(1 - wet, ctx.currentTime, 0.02);
+
+        chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.8 : 0.72, ctx.currentTime, 0.02);
+
+        clearFxTimers();
+
+        const stutterDepth = Math.max(0, Math.min(1, settings.stutterDepth));
+        const stutterRate = Math.max(1, Math.min(24, settings.stutterRate));
+        playback.stutterTimer = setInterval(() => {
+          if (!playback.chain) {
+            return;
+          }
+          const value = Math.random() > 0.5 ? 1 : Math.max(0.05, 1 - stutterDepth);
+          playback.chain.stutterGate.gain.setTargetAtTime(value, ctx.currentTime, 0.005);
+        }, 1000 / stutterRate);
+
+        const glitchChance = Math.max(0, Math.min(1, settings.glitchChance));
+        playback.glitchTimer = setInterval(() => {
+          if (!playback.chain || Math.random() > glitchChance) {
+            return;
+          }
+
+          playback.chain.stutterGate.gain.setTargetAtTime(0.01, ctx.currentTime, 0.002);
+          setTimeout(() => {
+            if (playback.chain) {
+              playback.chain.stutterGate.gain.setTargetAtTime(1, ctx.currentTime, 0.008);
+            }
+          }, 45 + Math.random() * 80);
+        }, 90);
+      };
+
+      const scheduleTone = ({ ctx, frequency, when, duration, gainAmount, type = 'sine', reverseMix = 0 }) => {
         const oscillator = ctx.createOscillator();
         const gain = ctx.createGain();
-
         oscillator.type = type;
         oscillator.frequency.setValueAtTime(frequency, when);
-        gain.gain.setValueAtTime(0.0001, when);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.001, gainAmount), when + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+
+        if (reverseMix > 0.35 && Math.random() < reverseMix) {
+          gain.gain.setValueAtTime(0.0001, when);
+          gain.gain.exponentialRampToValueAtTime(Math.max(0.001, gainAmount), when + Math.max(0.03, duration * 0.85));
+          gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration + 0.05));
+        } else {
+          gain.gain.setValueAtTime(0.0001, when);
+          gain.gain.exponentialRampToValueAtTime(Math.max(0.001, gainAmount), when + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+        }
 
         oscillator.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(playback.chain.input);
 
         oscillator.start(when);
         oscillator.stop(when + Math.max(0.05, duration + 0.08));
@@ -286,7 +481,8 @@ const renderLandingPage = () => `<!doctype html>
         gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration));
 
         oscillator.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(playback.chain.input);
+
         oscillator.start(when);
         oscillator.stop(when + Math.max(0.06, duration + 0.05));
         registerNode(oscillator);
@@ -315,18 +511,40 @@ const renderLandingPage = () => `<!doctype html>
         source.buffer = buffer;
         source.connect(filter);
         filter.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(playback.chain.input);
+
         source.start(when);
         source.stop(when + Math.max(0.04, duration + 0.02));
         registerNode(source);
       };
 
-      const playEvent = ({ ctx, event, startAt, beatLength }) => {
+      const synthProfileSettings = (profile) => {
+        if (profile === 'micro_inspired') {
+          return {
+            laneVoice: { bass: 'square', chords: 'sawtooth', melody: 'square', texture: 'triangle' },
+            gain: { bass: 0.11, chords: 0.1, melody: 0.1, texture: 0.06 },
+          };
+        }
+
+        if (profile === 'poly_clean') {
+          return {
+            laneVoice: { bass: 'triangle', chords: 'sine', melody: 'triangle', texture: 'sine' },
+            gain: { bass: 0.08, chords: 0.06, melody: 0.07, texture: 0.04 },
+          };
+        }
+
+        return {
+          laneVoice: { bass: 'sawtooth', chords: 'triangle', melody: 'square', texture: 'sine' },
+          gain: { bass: 0.1, chords: 0.08, melody: 0.09, texture: 0.05 },
+        };
+      };
+
+      const playEvent = ({ ctx, event, startAt, beatLength, fxSettings }) => {
         const when = startAt + event.beat * beatLength;
         const duration = Math.max(0.03, event.duration * beatLength);
         const velocity = Number(event.velocity ?? 80);
 
-        if (['kick'].includes(event.lane)) {
+        if (event.lane === 'kick') {
           scheduleKick({ ctx, when, duration, velocity });
           return;
         }
@@ -336,27 +554,15 @@ const renderLandingPage = () => `<!doctype html>
           return;
         }
 
-        const laneVoice = {
-          bass: 'sawtooth',
-          chords: 'triangle',
-          melody: 'square',
-          texture: 'sine',
-        };
-
-        const baseGain = {
-          bass: 0.1,
-          chords: 0.08,
-          melody: 0.09,
-          texture: 0.05,
-        };
-
+        const profile = synthProfileSettings(fxSettings.synthProfile);
         scheduleTone({
           ctx,
           frequency: midiToFreq(event.midi),
           when,
           duration,
-          gainAmount: (baseGain[event.lane] ?? 0.06) * (velocity / 110),
-          type: laneVoice[event.lane] ?? 'sine',
+          gainAmount: (profile.gain[event.lane] ?? 0.06) * (velocity / 110),
+          type: profile.laneVoice[event.lane] ?? 'sine',
+          reverseMix: fxSettings.reverseMix,
         });
       };
 
@@ -367,6 +573,9 @@ const renderLandingPage = () => `<!doctype html>
 
         stopPlayback();
         const ctx = await ensureContext();
+        const fxSettings = getFxSettings();
+        applyFxSettings(ctx, fxSettings);
+
         const beatLength = 60 / project.meta.bpm;
         const startAt = ctx.currentTime + 0.08;
 
@@ -375,7 +584,7 @@ const renderLandingPage = () => `<!doctype html>
 
         allEvents.forEach((event) => {
           const timeoutId = setTimeout(() => {
-            playEvent({ ctx, event, startAt, beatLength });
+            playEvent({ ctx, event, startAt, beatLength, fxSettings });
           }, Math.max(0, event.beat * beatLength * 1000));
 
           playback.timeouts.push(timeoutId);
@@ -387,6 +596,67 @@ const renderLandingPage = () => `<!doctype html>
         }, totalDurationSeconds * 1000);
 
         playback.timeouts.push(finishTimeout);
+      };
+
+      const triggerPad = async (padName) => {
+        const ctx = await ensureContext();
+        applyFxSettings(ctx, getFxSettings());
+        const when = ctx.currentTime + 0.01;
+
+        if (padName === 'kick') {
+          scheduleKick({ ctx, when, duration: 0.15, velocity: 120 });
+          return;
+        }
+
+        if (padName === 'snare') {
+          scheduleNoise({ ctx, when, duration: 0.12, velocity: 110 });
+          return;
+        }
+
+        scheduleNoise({ ctx, when, duration: 0.06, velocity: 86 });
+      };
+
+      const connectMidi = async () => {
+        if (!navigator.requestMIDIAccess) {
+          throw new Error('Web MIDI is not supported in this browser.');
+        }
+
+        const access = await navigator.requestMIDIAccess();
+        playback.midi = access;
+        playback.midiInputs = [...access.inputs.values()];
+
+        if (!playback.midiInputs.length) {
+          midiStateEl.textContent = 'MIDI: no inputs detected';
+          return;
+        }
+
+        const handler = async (message) => {
+          const [status, note, velocity] = message.data;
+          const command = status & 0xf0;
+
+          if (command !== 0x90 || velocity === 0) {
+            return;
+          }
+
+          const ctx = await ensureContext();
+          applyFxSettings(ctx, getFxSettings());
+          const profile = synthProfileSettings(getFxSettings().synthProfile);
+          scheduleTone({
+            ctx,
+            frequency: midiToFreq(note),
+            when: ctx.currentTime + 0.005,
+            duration: 0.35,
+            gainAmount: (profile.gain.melody ?? 0.08) * (velocity / 127),
+            type: profile.laneVoice.melody ?? 'sine',
+            reverseMix: getFxSettings().reverseMix,
+          });
+        };
+
+        playback.midiInputs.forEach((input) => {
+          input.onmidimessage = handler;
+        });
+
+        midiStateEl.textContent = 'MIDI: connected (' + playback.midiInputs.map((input) => input.name || 'unknown').join(', ') + ')';
       };
 
       const applyValues = (values) => {
@@ -508,6 +778,25 @@ const renderLandingPage = () => `<!doctype html>
       stopBtn.addEventListener('click', () => {
         stopPlayback();
         setStatus('Playback stopped.');
+      });
+
+      midiBtn.addEventListener('click', async () => {
+        try {
+          await connectMidi();
+          setStatus('MIDI connected. Notes from your controller now trigger the synth.');
+        } catch (error) {
+          setStatus(error.message || 'Unable to connect MIDI.', true);
+        }
+      });
+
+      document.querySelectorAll('[data-pad]').forEach((pad) => {
+        pad.addEventListener('click', async () => {
+          try {
+            await triggerPad(pad.dataset.pad);
+          } catch (error) {
+            setStatus(error.message || 'Pad trigger failed.', true);
+          }
+        });
       });
 
       form.addEventListener('submit', async (event) => {
