@@ -146,6 +146,13 @@ All manipulators process the original generated preview signal in-browser throug
 
 - Default generation now starts with a shorter arrangement (**24 bars**) and lower baseline density for less crowded output.
 - Duration policy now clamps generated projects to approximately **1–4 minutes** (instead of long-form defaults) to keep preview/render fast and easier to mix.
+- Melody/texture generation is intentionally thinned for cleaner, less dense arrangements.
+
+### Drum and live-control improvements
+
+- Locked drum-pattern playback now avoids layering with generated drum tracks during sync playback, improving beat alignment with transport.
+- Drum synthesis was updated for richer tone (layered kick body/punch and fuller snare/noise shaping).
+- FX and synth controls now re-apply live during playback so changes are heard on the fly without restarting transport.
 
 ## Research references used
 

@@ -896,25 +896,39 @@ const renderLandingPage = () => `<!doctype html>
 
       const scheduleKick = ({ ctx, when, duration, velocity }) => {
         const oscillator = ctx.createOscillator();
+        const punchOsc = ctx.createOscillator();
         const gain = ctx.createGain();
+        const punchGain = ctx.createGain();
 
         oscillator.type = 'sine';
         oscillator.frequency.setValueAtTime(140, when);
-        oscillator.frequency.exponentialRampToValueAtTime(45, when + Math.max(0.03, duration));
+        oscillator.frequency.exponentialRampToValueAtTime(46, when + Math.max(0.03, duration));
+
+        punchOsc.type = 'triangle';
+        punchOsc.frequency.setValueAtTime(240, when);
+        punchOsc.frequency.exponentialRampToValueAtTime(80, when + 0.02);
 
         gain.gain.setValueAtTime(0.0001, when);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.01, velocity / 130), when + 0.005);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.02, velocity / 110), when + 0.005);
         gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration));
+        punchGain.gain.setValueAtTime(0.0001, when);
+        punchGain.gain.exponentialRampToValueAtTime(Math.max(0.006, velocity / 400), when + 0.002);
+        punchGain.gain.exponentialRampToValueAtTime(0.0001, when + 0.04);
 
         oscillator.connect(gain);
+        punchOsc.connect(punchGain);
         gain.connect(playback.chain.input);
+        punchGain.connect(playback.chain.input);
 
         oscillator.start(when);
+        punchOsc.start(when);
         oscillator.stop(when + Math.max(0.06, duration + 0.05));
+        punchOsc.stop(when + 0.05);
         registerNode(oscillator);
+        registerNode(punchOsc);
       };
 
-      const scheduleNoise = ({ ctx, when, duration, velocity }) => {
+      const scheduleNoise = ({ ctx, when, duration, velocity, lane = 'snare' }) => {
         const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * Math.max(0.03, duration)));
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -925,18 +939,40 @@ const renderLandingPage = () => `<!doctype html>
 
         const source = ctx.createBufferSource();
         const filter = ctx.createBiquadFilter();
+        const toneFilter = ctx.createBiquadFilter();
         const gain = ctx.createGain();
 
-        filter.type = 'highpass';
-        filter.frequency.value = 1800;
+        filter.type = lane === 'hat' || lane === 'openHat' ? 'highpass' : 'bandpass';
+        filter.frequency.value = lane === 'hat' ? 5200 : lane === 'openHat' ? 4200 : lane === 'perc' ? 1200 : 1900;
+        filter.Q.value = lane === 'snare' ? 1.4 : 0.8;
+
+        toneFilter.type = 'lowpass';
+        toneFilter.frequency.value = lane === 'hat' || lane === 'openHat' ? 9000 : lane === 'perc' ? 2800 : 6400;
 
         gain.gain.setValueAtTime(0.0001, when);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.005, velocity / 250), when + 0.004);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.008, velocity / 220), when + 0.003);
         gain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.03, duration));
+
+        if (lane === 'snare') {
+          const bodyOsc = ctx.createOscillator();
+          const bodyGain = ctx.createGain();
+          bodyOsc.type = 'triangle';
+          bodyOsc.frequency.setValueAtTime(190, when);
+          bodyOsc.frequency.exponentialRampToValueAtTime(130, when + Math.max(0.02, duration * 0.7));
+          bodyGain.gain.setValueAtTime(0.0001, when);
+          bodyGain.gain.exponentialRampToValueAtTime(Math.max(0.004, velocity / 520), when + 0.003);
+          bodyGain.gain.exponentialRampToValueAtTime(0.0001, when + Math.max(0.04, duration));
+          bodyOsc.connect(bodyGain);
+          bodyGain.connect(playback.chain.input);
+          bodyOsc.start(when);
+          bodyOsc.stop(when + Math.max(0.05, duration + 0.03));
+          registerNode(bodyOsc);
+        }
 
         source.buffer = buffer;
         source.connect(filter);
-        filter.connect(gain);
+        filter.connect(toneFilter);
+        toneFilter.connect(gain);
         gain.connect(playback.chain.input);
 
         source.start(when);
@@ -975,7 +1011,7 @@ const renderLandingPage = () => `<!doctype html>
         }
 
         if (['snare', 'hat', 'openHat', 'perc', 'glitch'].includes(event.lane)) {
-          scheduleNoise({ ctx, when, duration, velocity });
+          scheduleNoise({ ctx, when, duration, velocity, lane: event.lane });
           return;
         }
 
@@ -1129,7 +1165,9 @@ const renderLandingPage = () => `<!doctype html>
         const beatLength = 60 / project.meta.bpm;
         const startAt = ctx.currentTime + 0.08;
 
-        const generatedEvents = Object.values(project.tracks).flat();
+        const generatedEvents = Object.entries(project.tracks)
+          .filter(([name]) => !(state.lockDrumPattern && name === 'drums'))
+          .flatMap(([, events]) => events);
         const lockedPatternEvents = buildLockedPatternEvents({ bars: project.meta.bars ?? 8 });
         const allEvents = [...generatedEvents, ...lockedPatternEvents].sort((left, right) => left.beat - right.beat);
 
@@ -1450,6 +1488,29 @@ const renderLandingPage = () => `<!doctype html>
         } finally {
           generateBtn.disabled = false;
         }
+      });
+
+      const liveFxInputs = [
+        'synthProfile','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
+        'fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxCpuSaver','fxTapeDelay',
+      ];
+      liveFxInputs.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) {
+          return;
+        }
+        el.addEventListener('input', () => {
+          if (!playback.context || !playback.chain) {
+            return;
+          }
+          applyFxSettings(playback.context, getFxSettings());
+        });
+        el.addEventListener('change', () => {
+          if (!playback.context || !playback.chain) {
+            return;
+          }
+          applyFxSettings(playback.context, getFxSettings());
+        });
       });
 
       enhanceStepButtons();

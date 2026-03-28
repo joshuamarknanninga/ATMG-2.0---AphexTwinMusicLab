@@ -326,12 +326,12 @@ const createMelodyTrack = ({ progression, bars, key, scale, sections, settings, 
     }
 
     motif.forEach((interval, index) => {
-      const restChance = clamp(0.44 - state.density * 0.22 + state.mutation * 0.08, 0.08, 0.5);
+      const restChance = clamp(0.52 - state.density * 0.18 + state.mutation * 0.1, 0.16, 0.68);
       if (maybe(random, restChance)) {
         return;
       }
 
-      const rhythmicGrid = state.syncopation > 0.7 ? [0, 0.5, 1.25, 2.25, 3.125] : [0, 0.75, 1.5, 2.5, 3.25];
+      const rhythmicGrid = state.syncopation > 0.7 ? [0, 1, 2, 3.125] : [0, 1.25, 2.5];
       const offset = rhythmicGrid[index % rhythmicGrid.length] + grooveOffset(index, settings.swing * 0.75);
       const registerBase = settings.brightness > 0.56 ? 5 : 4;
       const contourShift = maybe(random, state.instability * 0.35) ? choose(random, [-3, -2, 2, 3]) : 0;
@@ -342,6 +342,10 @@ const createMelodyTrack = ({ progression, bars, key, scale, sections, settings, 
         min: 52,
         max: 92,
       });
+
+      if (index > 2 && maybe(random, 0.45)) {
+        return;
+      }
 
       events.push(makeNote({
         lane: 'melody',
@@ -363,10 +367,14 @@ const createTextureTrack = ({ progression, bars, key, scale, sections, settings,
     const state = sectionStateForBar(barIndex, sections, settings);
     const degree = progression[barIndex % progression.length];
     const barStart = barIndex * 4;
-    const repetitions = Math.max(1, Math.round(state.texture * 3));
+    const repetitions = Math.max(1, Math.round(state.texture * 2));
+
+    if (state.texture < 0.5 && maybe(random, 0.45)) {
+      continue;
+    }
 
     for (let index = 0; index < repetitions; index += 1) {
-      if (maybe(random, clamp(0.48 - state.texture * 0.18, 0.08, 0.5))) {
+      if (maybe(random, clamp(0.56 - state.texture * 0.16, 0.16, 0.62))) {
         continue;
       }
 
