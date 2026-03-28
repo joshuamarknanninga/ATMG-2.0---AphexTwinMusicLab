@@ -128,7 +128,7 @@ All manipulators process the original generated preview signal in-browser throug
 - Added a **Tape Delay** toggle that rolls off high end and adds subtle delay-time wobble for a lo-fi tape echo flavor.
 - Replaced per-note `setTimeout` blasting with a **lookahead scheduler** (Web Audio clock aligned) to reduce UI thread stalls/freezes during long songs.
 - Added dynamic transport cleanup to stop timers/nodes quickly and avoid runaway resource use.
-- Added a one-click **Download Mix (MP3)** action that captures master output PCM and encodes a true MP3 (via `lamejs`) for better compatibility with iTunes/media players.
+- Added a one-click **Download Mix (MP3)** action that captures master output PCM via **AudioWorklet**, then encodes a true MP3 (via `lamejs`) for better compatibility with iTunes/media players.
 
 ### Dual-bank mix analysis and auto beat matching
 

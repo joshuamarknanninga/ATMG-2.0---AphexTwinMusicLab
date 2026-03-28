@@ -329,8 +329,9 @@ const renderLandingPage = () => `<!doctype html>
         playbackEndTimer: null,
         tapeDelayTimer: null,
         recordingChunks: [],
-        recordingProcessor: null,
+        recordingNode: null,
         recordingSilence: null,
+        pcmWorkletReady: false,
       };
 
       const form = document.getElementById('generatorForm');
@@ -749,14 +750,13 @@ const renderLandingPage = () => `<!doctype html>
           playback.chain.stutterGate.gain.setValueAtTime(1, playback.context.currentTime);
         }
 
-        if (playback.recordingProcessor) {
+        if (playback.recordingNode) {
           try {
-            playback.recordingProcessor.disconnect();
+            playback.recordingNode.disconnect();
           } catch (_error) {
             // no-op
           }
-          playback.recordingProcessor.onaudioprocess = null;
-          playback.recordingProcessor = null;
+          playback.recordingNode = null;
         }
 
         if (playback.recordingSilence) {
@@ -1013,26 +1013,63 @@ const renderLandingPage = () => `<!doctype html>
         return output;
       };
 
-      const startMp3Capture = (ctx) => {
+      const ensurePcmWorklet = async (ctx) => {
+        if (playback.pcmWorkletReady) {
+          return;
+        }
+
+        if (!ctx.audioWorklet) {
+          throw new Error('AudioWorklet is not supported in this browser.');
+        }
+
+        const moduleSource = [
+          'class PcmCaptureProcessor extends AudioWorkletProcessor {',
+          '  process(inputs) {',
+          '    const input = inputs[0];',
+          '    if (!input || !input[0]) {',
+          '      return true;',
+          '    }',
+          '    this.port.postMessage(input[0]);',
+          '    return true;',
+          '  }',
+          '}',
+          "registerProcessor('pcm-capture-processor', PcmCaptureProcessor);",
+        ].join('\\n');
+
+        const blob = new Blob([moduleSource], { type: 'application/javascript' });
+        const moduleUrl = URL.createObjectURL(blob);
+        await ctx.audioWorklet.addModule(moduleUrl);
+        URL.revokeObjectURL(moduleUrl);
+        playback.pcmWorkletReady = true;
+      };
+
+      const startMp3Capture = async (ctx) => {
         if (!playback.chain?.output) {
           throw new Error('Audio output chain is not ready for recording.');
         }
 
+        await ensurePcmWorklet(ctx);
         playback.recordingChunks = [];
-        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        const recordingNode = new AudioWorkletNode(ctx, 'pcm-capture-processor', {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: 1,
+        });
         const silence = ctx.createGain();
         silence.gain.value = 0;
 
-        processor.onaudioprocess = (event) => {
-          const channel = event.inputBuffer.getChannelData(0);
-          playback.recordingChunks.push(new Float32Array(channel));
+        recordingNode.port.onmessage = (event) => {
+          if (!event.data) {
+            return;
+          }
+          playback.recordingChunks.push(new Float32Array(event.data));
         };
 
-        playback.chain.output.connect(processor);
-        processor.connect(silence);
+        playback.chain.output.connect(recordingNode);
+        recordingNode.connect(silence);
         silence.connect(ctx.destination);
 
-        playback.recordingProcessor = processor;
+        playback.recordingNode = recordingNode;
         playback.recordingSilence = silence;
       };
 
@@ -1128,7 +1165,7 @@ const renderLandingPage = () => `<!doctype html>
         }, totalDurationSeconds * 1000);
 
         if (options.record) {
-          startMp3Capture(ctx);
+          await startMp3Capture(ctx);
         }
       };
 
