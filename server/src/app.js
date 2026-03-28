@@ -581,7 +581,7 @@ const renderLandingPage = () => `<!doctype html>
           'Energy: ' + analysis.energy.toFixed(3),
           'Freq centroid: ' + analysis.centroidHz + ' Hz',
           'First transient: ' + analysis.firstPeakSeconds.toFixed(3) + 's',
-        ].join('\n');
+        ].join('\\n');
       };
 
       const decodeFileToBuffer = async (file) => {
@@ -636,7 +636,7 @@ const renderLandingPage = () => `<!doctype html>
           toggles.key ? 'Key match: pitch-shift Bank B by ' + semitoneShift + ' semitone(s) toward ' + a.key + '.' : 'Key match: disabled.',
           toggles.eq ? 'EQ/Frequency balance: move Bank B tonal centroid by ' + eqDeltaHz.toFixed(0) + ' Hz toward Bank A.' : 'EQ/Frequency balance: disabled.',
           toggles.energy ? 'Energy match: adjust Bank B gain by ' + energyDelta.toFixed(3) + ' (normalized).' : 'Energy match: disabled.',
-        ].join('\n');
+        ].join('\\n');
       };
 
       const registerNode = (node) => {
