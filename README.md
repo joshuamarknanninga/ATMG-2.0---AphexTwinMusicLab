@@ -167,6 +167,19 @@ All manipulators process the original generated preview signal in-browser throug
 - When the Levee Breaks (widely sampled Bonham beat): https://en.wikipedia.org/wiki/When_the_Levee_Breaks
 - Apache (Incredible Bongo Band break): https://en.wikipedia.org/wiki/Apache_(instrumental)
 
+### Technologies to move beyond “chiptune” (research notes)
+
+- **Neural synthesis / performance modeling**: DDSP and MIDI-DDSP style pipelines for richer timbre and expressivity from note control.
+  - https://magenta.tensorflow.org/ddsp
+  - https://arxiv.org/abs/2112.09312
+- **Expressive instrument modeling / high-end virtual instruments**: physically modeled and deeply sampled engines (Kontakt ecosystem, modeled instruments) for articulation depth beyond plain oscillators.
+  - https://www.native-instruments.com/en/products/komplete/samplers/kontakt-8/
+  - https://www.expressivee.com/2-soliste
+- **Humanization tooling**: timing/velocity/performance perturbation to reduce robotic quantization artifacts.
+  - https://www.ableton.com/en/manual/editing-midi-notes-and-velocities/#midi-note-editor
+- **Browser-native performance DSP**: AudioWorklet + WebAssembly DSP pipelines for lower-latency, richer synthesis and custom processors.
+  - https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet
+
 ## Research references used
 
 Implementation references used for this update:

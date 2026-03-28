@@ -223,6 +223,12 @@ const renderLandingPage = () => `<!doctype html>
               <label>Richness
                 <input id="fxRichness" type="number" min="0" max="1" step="0.01" value="0.55" />
               </label>
+              <label>Warmth
+                <input id="fxWarmth" type="number" min="0" max="1" step="0.01" value="0.48" />
+              </label>
+              <label>Humanize
+                <input id="fxHumanize" type="number" min="0" max="1" step="0.01" value="0.28" />
+              </label>
               <label class="toggle-row"><input id="fxTapeDelay" type="checkbox" /><span class="toggle-text">Tape Delay</span></label>
               <label class="toggle-row"><input id="fxCpuSaver" type="checkbox" /><span class="toggle-text">CPU Saver</span></label>
 
@@ -413,7 +419,7 @@ const renderLandingPage = () => `<!doctype html>
       const midiToFreq = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
 
       const enhanceStepButtons = () => {
-        const targets = ['fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix','fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness'];
+        const targets = ['fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix','fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxWarmth','fxHumanize'];
 
         targets.forEach((id) => {
           const input = document.getElementById(id);
@@ -852,6 +858,8 @@ const renderLandingPage = () => `<!doctype html>
         glitchChance: Number(document.getElementById('fxGlitchChance').value),
         reverseMix: Number(document.getElementById('fxReverseMix').value),
         richness: Number(document.getElementById('fxRichness').value),
+        warmth: Number(document.getElementById('fxWarmth').value),
+        humanize: Number(document.getElementById('fxHumanize').value),
         cpuSaver: document.getElementById('fxCpuSaver').checked,
         tapeDelay: document.getElementById('fxTapeDelay').checked,
       });
@@ -882,9 +890,15 @@ const renderLandingPage = () => `<!doctype html>
         chain.shaper.curve = makeDistortionCurve(Math.max(0, Math.min(1, settings.drive + (tapeOn ? 0.04 : 0))));
 
         const richness = Math.max(0, Math.min(1, settings.richness ?? 0.55));
+        const warmth = Math.max(0, Math.min(1, settings.warmth ?? 0.48));
         chain.output.gain.setTargetAtTime(settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7, ctx.currentTime, 0.02);
-        chain.filter.frequency.setTargetAtTime(Math.max(80, Math.min(12000, settings.filterCutoff + richness * 2200)), ctx.currentTime, 0.02);
+        chain.filter.frequency.setTargetAtTime(
+          Math.max(80, Math.min(12000, settings.filterCutoff + richness * 2200 - warmth * 900)),
+          ctx.currentTime,
+          0.02,
+        );
         chain.filter.Q.setTargetAtTime(Math.max(0.1, Math.min(20, settings.filterQ + richness * 0.9)), ctx.currentTime, 0.02);
+        chain.output.gain.setTargetAtTime((settings.synthProfile === 'micro_inspired' ? 0.78 : 0.7) + warmth * 0.04, ctx.currentTime, 0.02);
 
         clearFxTimers();
 
@@ -1059,16 +1073,20 @@ const renderLandingPage = () => `<!doctype html>
       };
 
       const playEvent = ({ ctx, event, when, beatLength, fxSettings }) => {
+        const humanize = Math.max(0, Math.min(1, fxSettings.humanize ?? 0.28));
+        const timingJitter = ((Math.random() * 2) - 1) * humanize * 0.012;
+        const scheduledWhen = Math.max(ctx.currentTime + 0.002, when + timingJitter);
         const duration = Math.max(0.03, event.duration * beatLength);
         const velocity = Number(event.velocity ?? 80);
+        const velocityHumanized = Math.max(1, Math.min(127, velocity + Math.round(((Math.random() * 2) - 1) * humanize * 12)));
 
         if (event.lane === 'kick') {
-          scheduleKick({ ctx, when, duration, velocity });
+          scheduleKick({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized });
           return;
         }
 
         if (['snare', 'hat', 'openHat', 'perc', 'glitch'].includes(event.lane)) {
-          scheduleNoise({ ctx, when, duration, velocity, lane: event.lane });
+          scheduleNoise({ ctx, when: scheduledWhen, duration, velocity: velocityHumanized, lane: event.lane });
           return;
         }
 
@@ -1078,9 +1096,9 @@ const renderLandingPage = () => `<!doctype html>
         scheduleTone({
           ctx,
           frequency: midiToFreq(event.midi),
-          when,
+          when: scheduledWhen,
           duration,
-          gainAmount: profileGain * (velocity / 110),
+          gainAmount: profileGain * (velocityHumanized / 110),
           type: profile.laneVoice[event.lane] ?? 'sine',
           reverseMix: fxSettings.reverseMix,
         });
@@ -1586,7 +1604,7 @@ const renderLandingPage = () => `<!doctype html>
 
       const liveFxInputs = [
         'synthProfile','fxFilterCutoff','fxFilterQ','fxDrive','fxDelayTime','fxDelayFeedback','fxDelayMix',
-        'fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxCpuSaver','fxTapeDelay',
+        'fxStutterRate','fxStutterDepth','fxGlitchChance','fxReverseMix','fxRichness','fxWarmth','fxHumanize','fxCpuSaver','fxTapeDelay',
       ];
       liveFxInputs.forEach((id) => {
         const el = document.getElementById(id);
