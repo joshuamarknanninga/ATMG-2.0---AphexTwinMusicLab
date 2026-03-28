@@ -73,6 +73,8 @@ const PRESET_PROFILES = {
   },
 };
 
+const GROOVE_TEMPLATES = ['straight', 'dilla', 'broken_beat', 'garage_swing'];
+
 const DRUM_MAP = {
   kick: 36,
   snare: 38,
@@ -167,8 +169,61 @@ const mergeSettings = (input) => {
     instability: clamp(Number(overrides.instability ?? presetProfile.instability ?? DEFAULTS.instability), 0, 1),
     brightness: clamp(Number(overrides.brightness ?? presetProfile.brightness ?? DEFAULTS.brightness), 0, 1),
     texture: clamp(Number(overrides.texture ?? presetProfile.texture ?? DEFAULTS.texture), 0, 1),
+    grooveTemplate: GROOVE_TEMPLATES.includes(String(overrides.grooveTemplate ?? ''))
+      ? String(overrides.grooveTemplate)
+      : 'straight',
   };
 };
+
+const grooveTransform = (note, grooveTemplate) => {
+  if (grooveTemplate === 'straight') {
+    return note;
+  }
+
+  const isOffbeat = Math.floor((note.beat % 1) * 4) % 2 === 1;
+  const lane = note.lane;
+  let offset = 0;
+  let velocityScale = 1;
+
+  if (grooveTemplate === 'dilla') {
+    offset += isOffbeat ? 0.022 : -0.004;
+    if (lane === 'snare' || lane === 'hat') {
+      offset += 0.008;
+      velocityScale = 0.92;
+    }
+  } else if (grooveTemplate === 'broken_beat') {
+    offset += isOffbeat ? 0.03 : -0.01;
+    if (lane === 'kick') {
+      velocityScale = 0.95;
+    }
+    if (lane === 'perc' || lane === 'texture') {
+      offset += 0.01;
+      velocityScale = 0.88;
+    }
+  } else if (grooveTemplate === 'garage_swing') {
+    offset += isOffbeat ? 0.038 : -0.002;
+    if (lane === 'hat' || lane === 'openHat') {
+      velocityScale = 0.9;
+    }
+    if (lane === 'snare') {
+      offset += 0.006;
+    }
+  }
+
+  return {
+    ...note,
+    beat: Number(Math.max(0, note.beat + offset).toFixed(3)),
+    velocity: clamp(Math.round(note.velocity * velocityScale), 1, 127),
+  };
+};
+
+const applyGrooveTemplate = (tracks, grooveTemplate) =>
+  Object.fromEntries(
+    Object.entries(tracks).map(([lane, events]) => [
+      lane,
+      events.map((note) => grooveTransform(note, grooveTemplate)).sort((left, right) => left.beat - right.beat),
+    ]),
+  );
 
 const buildSections = (bars, settings) => {
   if (bars <= 4) {
@@ -467,13 +522,14 @@ export const generateProject = (input = {}) => {
   const textureTrack = createTextureTrack({ progression, bars: settings.bars, key: settings.key, scale: settings.scale, sections, settings, random });
   const drumTrack = createDrumTrack({ bars: settings.bars, sections, settings, random });
 
-  const tracks = {
+  const rawTracks = {
     chords: harmonyTrack.events,
     bass: bassTrack,
     melody: melodyTrack.events,
     texture: textureTrack,
     drums: drumTrack,
   };
+  const tracks = applyGrooveTemplate(rawTracks, settings.grooveTemplate);
 
   const trackSummary = Object.fromEntries(Object.entries(tracks).map(([name, events]) => [name, summarizeTrack(events)]));
   const durationBeats = settings.bars * 4;

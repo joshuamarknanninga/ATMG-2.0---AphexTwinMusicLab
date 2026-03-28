@@ -52,6 +52,7 @@ test('root and favicon endpoints avoid confusing browser 404s', async () => {
   assert.match(root.body, /<title>ATMG 2\.0 Music Engine<\/title>/);
   assert.match(root.body, /FX pedalboard UI/);
   assert.match(root.body, /Generate Project/);
+  assert.match(root.body, /Groove Template/);
   assert.match(root.body, /Play Project/);
   assert.match(root.body, /FX Pedalboard/);
   assert.match(root.body, /Connect MIDI/);

@@ -126,6 +126,7 @@ All manipulators process the original generated preview signal in-browser throug
 - Every numeric Synth + Multi FX value now has explicit **+ / − step buttons** for mouse-first control (instead of relying on native input arrows only).
 - Drum machine includes a **16-step pattern lock** for kick/snare/hat that can be toggled and edited live.
 - **Sync Play** starts music generation playback, synth engine, and locked drum pattern from the same transport start, keeping them aligned by BPM/beat grid.
+- Added **Groove Template** control (`straight`, `dilla`, `broken_beat`, `garage_swing`) that applies lane-aware timing/velocity shaping for less rigid playback feel.
 
 ### Richness and performance optimization
 

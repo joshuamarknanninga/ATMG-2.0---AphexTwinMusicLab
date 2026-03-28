@@ -30,6 +30,16 @@ test('different presets reshape the arrangement profile', () => {
   assert.equal(corrosive.meta.sections.some((section) => section.name === 'fracture'), true);
 });
 
+test('groove templates reshape timing/velocity feel deterministically', () => {
+  const straight = generateProject({ seed: 'groove-check', bars: 8, grooveTemplate: 'straight' });
+  const dilla = generateProject({ seed: 'groove-check', bars: 8, grooveTemplate: 'dilla' });
+
+  assert.notDeepEqual(
+    straight.tracks.drums.slice(0, 16).map((note) => [note.beat, note.velocity]),
+    dilla.tracks.drums.slice(0, 16).map((note) => [note.beat, note.velocity]),
+  );
+});
+
 test('analysis summarizes symbolic clips', () => {
   const summary = analyzeClip({
     notes: [

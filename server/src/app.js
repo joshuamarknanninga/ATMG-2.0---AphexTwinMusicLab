@@ -149,6 +149,14 @@ const renderLandingPage = () => `<!doctype html>
               <label>Mood
                 <select id="mood" name="mood"></select>
               </label>
+              <label>Groove Template
+                <select id="grooveTemplate" name="grooveTemplate">
+                  <option value="straight">Straight</option>
+                  <option value="dilla">Dilla</option>
+                  <option value="broken_beat">Broken Beat</option>
+                  <option value="garage_swing">Garage Swing</option>
+                </select>
+              </label>
               <label>Scale
                 <select id="scale" name="scale"></select>
               </label>
@@ -1243,6 +1251,49 @@ const renderLandingPage = () => `<!doctype html>
         });
       };
 
+      const applyGrooveTemplateClient = (events) => {
+        const template = document.getElementById('grooveTemplate').value;
+        if (template === 'straight') {
+          return events;
+        }
+
+        return events.map((event) => {
+          const isOffbeat = Math.floor((event.beat % 1) * 4) % 2 === 1;
+          let offset = 0;
+          let velocityScale = 1;
+          if (template === 'dilla') {
+            offset += isOffbeat ? 0.022 : -0.004;
+            if (event.lane === 'snare' || event.lane === 'hat') {
+              offset += 0.008;
+              velocityScale = 0.92;
+            }
+          } else if (template === 'broken_beat') {
+            offset += isOffbeat ? 0.03 : -0.01;
+            if (event.lane === 'kick') {
+              velocityScale = 0.95;
+            }
+            if (event.lane === 'perc' || event.lane === 'texture') {
+              offset += 0.01;
+              velocityScale = 0.88;
+            }
+          } else if (template === 'garage_swing') {
+            offset += isOffbeat ? 0.038 : -0.002;
+            if (event.lane === 'hat' || event.lane === 'openHat') {
+              velocityScale = 0.9;
+            }
+            if (event.lane === 'snare') {
+              offset += 0.006;
+            }
+          }
+
+          return {
+            ...event,
+            beat: Number(Math.max(0, event.beat + offset).toFixed(3)),
+            velocity: Math.max(1, Math.min(127, Math.round((event.velocity ?? 88) * velocityScale))),
+          };
+        }).sort((left, right) => left.beat - right.beat);
+      };
+
       const mergeFloatChunks = (chunks) => {
         const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
         const merged = new Float32Array(length);
@@ -1419,8 +1470,9 @@ const renderLandingPage = () => `<!doctype html>
         const generatedEvents = Object.entries(project.tracks)
           .filter(([name]) => !(state.lockDrumPattern && name === 'drums'))
           .flatMap(([, events]) => events);
+        const grooveShapedEvents = applyGrooveTemplateClient(generatedEvents);
         const lockedPatternEvents = buildLockedPatternEvents({ bars: project.meta.bars ?? 8 });
-        const allEvents = [...generatedEvents, ...lockedPatternEvents].sort((left, right) => left.beat - right.beat);
+        const allEvents = [...grooveShapedEvents, ...lockedPatternEvents].sort((left, right) => left.beat - right.beat);
 
         let cursor = 0;
         const lookAheadSeconds = fxSettings.cpuSaver ? 0.12 : 0.22;
@@ -1574,6 +1626,7 @@ const renderLandingPage = () => `<!doctype html>
         seed: document.getElementById('seed').value.trim(),
         preset: presetEl.value,
         mood: moodEl.value,
+        grooveTemplate: document.getElementById('grooveTemplate').value,
         scale: scaleEl.value,
         key: document.getElementById('key').value.trim().toUpperCase(),
         bpm: Number(document.getElementById('bpm').value),
