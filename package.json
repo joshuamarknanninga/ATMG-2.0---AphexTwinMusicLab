@@ -1,0 +1,12 @@
+{
+  "name": "atmg-2.0-aphex-twin-music-lab",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Workspace scripts for the ATMG 2.0 server.",
+  "scripts": {
+    "dev": "npm --prefix server run dev",
+    "start": "npm --prefix server run start",
+    "test": "npm --prefix server run test",
+    "lint": "npm --prefix server run lint"
+  }
+}
