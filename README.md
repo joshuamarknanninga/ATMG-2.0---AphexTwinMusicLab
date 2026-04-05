@@ -15,6 +15,42 @@ The repository now ships with a production-friendly, dependency-light Node API f
 - clip analysis for symbolic note data,
 - simple guest sessions and in-memory project persistence.
 
+## 25-year maturity roadmap (deep-tech upgrade plan)
+
+If you want this to feel as mature as long-lived pro tools, the next upgrades should focus on reliability, DSP quality, and beginner-friendly workflow layers.
+
+### Platform and DSP backbone
+
+- Move more real-time DSP into **AudioWorklet** processors (stable low-latency graph execution on the audio rendering thread).
+- Add **WebAssembly (WASM + SIMD)** DSP modules for filters/saturation/time FX where JS becomes CPU-heavy.
+- Add optional **WebGPU** acceleration for heavy visuals + ML inference workloads that should not block UI/audio scheduling.
+
+### Party/DJ usability layer
+
+- Add deck abstractions (Deck A / Deck B), tempo/key lock, quantized cue points, and one-click transition recipes.
+- Add persistent scene presets (“House Warmup”, “Peak Club”, “Afterhours”) that auto-map generator + FX + drum lock settings.
+- Add safe-guard controls for non-musicians: “More Energy”, “More Space”, “More Groove”, each as bounded macro knobs.
+
+### Analysis and AI assist
+
+- Add browser/server audio feature extraction pipelines (BPM, key, spectral centroid, energy) as first-class APIs.
+- Add optional model inference via **ONNX Runtime Web** (WebGPU provider when available) for intelligent suggestions.
+- Add structured recommendation layers (e.g., “best next transition”, “compatible key move”, “drop timing”).
+
+### Collaboration and scale
+
+- Add real-time shared sessions using CRDTs for collaborative live set editing.
+- Add robust storage backends (SQLite/Postgres) behind the same domain interfaces currently using in-memory models.
+- Add job queues for heavy tasks (stems rendering, source separation, batch analysis).
+
+### Primary references for the roadmap
+
+- AudioWorklet: https://developer.mozilla.org/en-US/docs/Web/API/AudioWorklet
+- Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+- WebAssembly: https://developer.mozilla.org/en-US/docs/WebAssembly
+- WebGPU: https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API
+- ONNX Runtime Web: https://onnxruntime.ai/docs/tutorials/web/
+
 ## Quick start
 
 ```bash

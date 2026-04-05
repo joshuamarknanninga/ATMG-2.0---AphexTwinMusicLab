@@ -191,6 +191,14 @@ const renderLandingPage = () => `<!doctype html>
                 <input id="texture" name="texture" type="number" min="0" max="1" step="0.01" value="0.58" />
               </label>
 
+              <div class="full section-title">Guided Quick Start (No Music Theory Needed)</div>
+              <div class="full actions">
+                <button class="primary" type="button" id="modeFunBtn">🎉 Fun Mode</button>
+                <button class="secondary" type="button" id="modeDjBtn">🎧 DJ Party Mode</button>
+                <button class="secondary" type="button" id="modeLearnBtn">🧭 Teach Me</button>
+              </div>
+              <p class="fx-note" id="quickGuideText">Pick a mode to auto-configure the app. Fun Mode is playful and immediate; DJ Party Mode prioritizes stable tempo + punchy bus settings.</p>
+
               <div class="full section-title">Synth + Multi FX Pedalboard</div>
               <label>Synth Profile
                 <select id="synthProfile">
@@ -428,6 +436,10 @@ const renderLandingPage = () => `<!doctype html>
       const lockPatternToggleEl = document.getElementById('lockPatternToggle');
       const drumPresetSelectEl = document.getElementById('drumPresetSelect');
       const downloadMixBtn = document.getElementById('downloadMixBtn');
+      const modeFunBtn = document.getElementById('modeFunBtn');
+      const modeDjBtn = document.getElementById('modeDjBtn');
+      const modeLearnBtn = document.getElementById('modeLearnBtn');
+      const quickGuideTextEl = document.getElementById('quickGuideText');
       const patternGridEl = document.getElementById('patternGrid');
       const midiStateEl = document.getElementById('midiState');
       const bankAFileEl = document.getElementById('bankAFile');
@@ -1777,6 +1789,69 @@ const renderLandingPage = () => `<!doctype html>
         }
       };
 
+      const randomFrom = (items) => items[Math.floor(Math.random() * items.length)];
+
+      const applyQuickMode = async (mode) => {
+        if (mode === 'fun') {
+          const funMoodPool = state.moods.length ? state.moods : ['playful', 'dreamy', 'chaotic'];
+          const funPresetPool = state.presets.length ? state.presets : ['idm', 'ambient', 'breakbeat'];
+          applyValues({
+            preset: randomFrom(funPresetPool),
+            mood: randomFrom(funMoodPool),
+            bars: 24,
+            bpm: 120 + Math.floor(Math.random() * 18),
+            density: 0.52,
+            complexity: 0.58,
+            mutation: 0.64,
+            texture: 0.62,
+            grooveTemplate: 'broken_beat',
+            synthProfile: 'mini_inspired',
+            fxBusPreset: 'warm',
+            fxEngineMode: 'hybrid',
+            fxTapeDelay: true,
+          });
+          quickGuideTextEl.textContent = 'Fun Mode: randomized friendly preset loaded. Click Generate, then Play or Sync Play.';
+          setStatus('Fun Mode loaded. Hit Generate and press Play.', false);
+          return;
+        }
+
+        if (mode === 'dj') {
+          applyValues({
+            preset: state.presets.includes('breakbeat') ? 'breakbeat' : (state.presets[0] ?? 'idm'),
+            mood: state.moods.includes('aggressive') ? 'aggressive' : (state.moods[0] ?? 'dark'),
+            bars: 32,
+            bpm: 128,
+            density: 0.65,
+            complexity: 0.62,
+            grooveTemplate: 'garage_swing',
+            synthProfile: 'micro_inspired',
+            fxBusPreset: 'club',
+            fxEngineMode: 'hybrid',
+            fxDrive: 0.42,
+            fxDelayMix: 0.2,
+            fxDelayFeedback: 0.38,
+            fxTapeDelay: false,
+            lockPatternToggle: true,
+          });
+          lockPatternToggleEl.checked = true;
+          state.lockDrumPattern = true;
+          applyDrumPreset('amen_break');
+          quickGuideTextEl.textContent = 'DJ Party Mode: club-focused settings loaded (128 BPM, locked drums, club bus). Generate and tap Sync Play.';
+          setStatus('DJ Party Mode loaded. Generate then use Sync Play for tight starts.', false);
+          return;
+        }
+
+        const steps = [
+          '1) Click Fun Mode or DJ Party Mode.',
+          '2) Press Generate Project.',
+          '3) Press Sync Play for aligned transport + drums.',
+          '4) Turn Master Bus Preset to warm/club/cinematic.',
+          '5) Use Download Mix (MP3) to export your quick party mix.',
+        ];
+        quickGuideTextEl.textContent = 'Quick tutorial: ' + steps.join(' ');
+        setStatus('Tutorial tips loaded in Guided Quick Start.', false);
+      };
+
       const updateCards = (project) => {
         if (!project?.meta) {
           return;
@@ -2016,6 +2091,15 @@ const renderLandingPage = () => `<!doctype html>
         } finally {
           generateBtn.disabled = false;
         }
+      });
+      modeFunBtn.addEventListener('click', () => {
+        applyQuickMode('fun').catch((error) => setStatus(error.message || 'Unable to enable Fun Mode.', true));
+      });
+      modeDjBtn.addEventListener('click', () => {
+        applyQuickMode('dj').catch((error) => setStatus(error.message || 'Unable to enable DJ Party Mode.', true));
+      });
+      modeLearnBtn.addEventListener('click', () => {
+        applyQuickMode('learn').catch((error) => setStatus(error.message || 'Unable to show tutorial tips.', true));
       });
 
       const liveFxInputs = [
